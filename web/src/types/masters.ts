@@ -32,3 +32,36 @@ export interface ProductsResponse {
   message?: string
   products: ProductOption[]
 }
+
+export interface ProcessStepOption {
+  id: string
+  code: string
+  name: string
+  category: string
+  standardHoursPerPiece: number
+  requiresQualityRelease: boolean
+}
+
+export interface MachineOption {
+  id: string
+  machineCode: string
+  name: string
+  machineType: string
+  bay: string
+  maxHoursPerShift: number
+  status: string
+  maintenanceStatus: string
+  active: boolean
+}
+
+export interface ProcessStepsResponse {
+  success: boolean
+  message?: string
+  processSteps: ProcessStepOption[]
+}
+
+export interface MachinesResponse {
+  success: boolean
+  message?: string
+  machines: MachineOption[]
+}

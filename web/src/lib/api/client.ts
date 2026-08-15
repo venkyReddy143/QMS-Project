@@ -2,7 +2,7 @@ import axios, { type AxiosError } from 'axios'
 import { clearAccessToken, getAccessToken } from './session'
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
   timeout: 20000,
   headers: {
     Accept: 'application/json',

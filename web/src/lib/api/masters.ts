@@ -1,4 +1,9 @@
-import type { CustomersResponse, ProductsResponse } from '../../types/masters'
+import type {
+  CustomersResponse,
+  MachinesResponse,
+  ProcessStepsResponse,
+  ProductsResponse,
+} from '../../types/masters'
 import { get } from './http'
 
 export function fetchCustomersApi() {
@@ -7,4 +12,12 @@ export function fetchCustomersApi() {
 
 export function fetchProductsApi() {
   return get<ProductsResponse>('/products')
+}
+
+export function fetchProcessStepsApi() {
+  return get<ProcessStepsResponse>('/process-steps')
+}
+
+export function fetchMachinesApi() {
+  return get<MachinesResponse>('/machines')
 }
