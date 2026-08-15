@@ -41,8 +41,9 @@ export async function login(
   next: NextFunction,
 ) {
   try {
-    const phone = readPhone(req.body)
-    const password = String(req.body.password ?? '')
+    const body = req.body ?? {}
+    const phone = readPhone(body)
+    const password = String(body.password ?? '').trim()
 
     if (!phone || !password) {
       res.status(400).json({
@@ -61,8 +62,11 @@ export async function login(
     }
 
     const user = await User.findOne({ phone }).select('+password')
+    const passwordMatches = user
+      ? await user.comparePassword(password)
+      : false
 
-    if (!user || !(await user.comparePassword(password))) {
+    if (!user || !passwordMatches) {
       res.status(401).json({
         success: false,
         message: 'Wrong mobile number or password.',
@@ -79,7 +83,10 @@ export async function login(
     }
 
     user.lastLoginAt = new Date()
-    await user.save()
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { lastLoginAt: user.lastLoginAt } },
+    )
 
     res.json({
       success: true,

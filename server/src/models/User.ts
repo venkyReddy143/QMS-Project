@@ -114,7 +114,22 @@ userSchema.methods.comparePassword = async function comparePassword(
   this: IUserDocument,
   plainPassword: string,
 ) {
-  return bcrypt.compare(plainPassword, this.password)
+  const stored = this.password
+  if (!stored) {
+    return false
+  }
+
+  const incoming = String(plainPassword ?? '').trim()
+  const isHashed =
+    stored.startsWith('$2a$') ||
+    stored.startsWith('$2b$') ||
+    stored.startsWith('$2y$')
+
+  if (isHashed) {
+    return bcrypt.compare(incoming, stored)
+  }
+
+  return incoming === stored.trim()
 }
 
 userSchema.methods.toAuthJSON = function toAuthJSON(this: IUserDocument) {
