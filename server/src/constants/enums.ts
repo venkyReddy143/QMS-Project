@@ -20,3 +20,19 @@ export type OrderPriority = (typeof ORDER_PRIORITIES)[number]
 
 export const ROUTE_STATUSES = ['ACTIVE', 'INACTIVE'] as const
 export type RouteStatus = (typeof ROUTE_STATUSES)[number]
+
+export const MACHINE_STATUSES = [
+  'AVAILABLE',
+  'BUSY',
+  'MAINTENANCE',
+  'DOWN',
+  'INACTIVE',
+] as const
+export type MachineStatus = (typeof MACHINE_STATUSES)[number]
+
+export const MACHINE_HEALTH_STATUSES = [
+  'HEALTHY',
+  'ATTENTION',
+  'UNHEALTHY',
+] as const
+export type MachineHealthStatus = (typeof MACHINE_HEALTH_STATUSES)[number]

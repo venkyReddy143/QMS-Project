@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import { Customer } from '../models/Customer'
+import { Machine } from '../models/Machine'
 import { ProcessRoute } from '../models/ProcessRoute'
 import { ProcessStep } from '../models/ProcessStep'
 import { Product } from '../models/Product'
@@ -111,6 +112,35 @@ export async function listProcessSteps(
         category: step.category,
         standardHoursPerPiece: step.standardHoursPerPiece,
         requiresQualityRelease: step.requiresQualityRelease,
+      })),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function listMachines(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const machines = await Machine.find({ active: true })
+      .sort({ machineType: 1, machineCode: 1 })
+      .lean()
+
+    res.json({
+      success: true,
+      machines: machines.map((machine) => ({
+        id: machine._id.toString(),
+        machineCode: machine.machineCode,
+        name: machine.name,
+        machineType: machine.machineType,
+        bay: machine.bay ?? '',
+        maxHoursPerShift: machine.maxHoursPerShift,
+        status: machine.status,
+        maintenanceStatus: machine.maintenanceStatus ?? 'HEALTHY',
+        active: machine.active,
       })),
     })
   } catch (error) {
