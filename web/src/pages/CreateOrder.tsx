@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { CheckCircle2, PlusCircle, Trash2 } from 'lucide-react'
+import { useOrders } from '../context/OrdersContext'
 
 const CUSTOMERS = [
   'AeroDyn Turbines Ltd.',
@@ -109,6 +110,7 @@ function formatInr(value: number): string {
 }
 
 export function CreateOrder() {
+  const { createOrder } = useOrders()
   const [customer, setCustomer] = useState('')
   const [customerQuery, setCustomerQuery] = useState('')
   const [product, setProduct] = useState<ProductName>('HP Stage-1 Rotor Blade')
@@ -218,10 +220,54 @@ export function CreateOrder() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!customer) return
+    if (processSteps.length === 0) {
+      setStepError('Add at least one process step before creating the order.')
+      return
+    }
 
-    const year = new Date().getFullYear()
-    const seq = String(Math.floor(Math.random() * 9000) + 1000)
-    setCreatedOrderId(`MO-${year}-${seq}`)
+    // Payload for backend API (POST /orders or similar)
+    const createOrderPayload = {
+      customer,
+      product,
+      customerPoNumber: poNumber,
+      quantity: Number(quantity) || 1,
+      budgetInr: budget === '' ? null : Number(budget),
+      estimationPriceInr: displayEstimate,
+      estimationIsManual: estimationManual,
+      primaryMachine,
+      additionalMachines,
+      targetDate,
+      priority,
+      notes,
+      processSteps: processSteps.map((step, index) => ({
+        sequence: index + 1,
+        name: step.name,
+        hoursPerPiece: step.hours,
+        isCustom: step.isCustom,
+      })),
+    }
+
+    console.log('[Create Order] API payload for backend:', createOrderPayload)
+    console.log(
+      '[Create Order] JSON string:\n',
+      JSON.stringify(createOrderPayload, null, 2),
+    )
+
+    const id = createOrder({
+      customer,
+      product,
+      poNumber,
+      qty: Number(quantity) || 1,
+      dueDate: targetDate,
+      priority,
+      notes,
+      processSteps: processSteps.map((step) => ({
+        id: step.id,
+        name: step.name,
+        hours: step.hours,
+      })),
+    })
+    setCreatedOrderId(id)
   }
 
   if (createdOrderId) {

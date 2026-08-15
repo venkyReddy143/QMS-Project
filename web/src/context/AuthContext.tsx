@@ -15,7 +15,7 @@ export type UserRole =
 export interface AuthUser {
   id: string
   phone: string
-  password?: string
+  password: string
   name: string
   role: UserRole
   defaultPath: string
@@ -84,14 +84,13 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 const STORAGE_KEY = 'qms-factory-auth'
-const TOKEN_KEY = 'qms-factory-token'
-const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 function readStoredUser(): AuthUser | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as AuthUser
+    const parsed = JSON.parse(raw) as { id: string }
+    return DEMO_USERS.find((user) => user.id === parsed.id) ?? null
   } catch {
     return null
   }

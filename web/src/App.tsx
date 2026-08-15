@@ -3,8 +3,10 @@ import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-route
 import { LoginScreen } from './components/LoginScreen'
 import { Layout } from './components/layout/Layout'
 import { AuthProvider, useAuth, type AuthUser } from './context/AuthContext'
+import { OrdersProvider } from './context/OrdersContext'
 import { CreateOrder } from './pages/CreateOrder'
 import { MyTasks } from './pages/MyTasks'
+import { OrderDetail } from './pages/OrderDetail'
 import { OrdersList } from './pages/OrdersList'
 import { ProductionPlanning } from './pages/ProductionPlanning'
 
@@ -75,6 +77,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/orders/:orderId"
+          element={
+            <ProtectedRoute path="/orders">
+              <OrderDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/production-planning"
           element={
             <ProtectedRoute path="/production-planning">
@@ -102,9 +112,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <OrdersProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </OrdersProvider>
     </AuthProvider>
   )
 }
