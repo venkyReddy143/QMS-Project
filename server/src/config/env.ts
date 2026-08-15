@@ -13,7 +13,7 @@ if (!process.env.JWT_SECRET) {
 }
 
 if (!process.env.MONGODB_URI) {
-  process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/qms'
+  process.env.MONGODB_URI = 'mongodb+srv://reddyvenky063_db_user:YUOrvq0LLpqx7LFZ@cluster0.yrd2tgu.mongodb.net/qms'
 }
 
 if (!process.env.JWT_EXPIRES_IN) {
