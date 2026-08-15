@@ -1,14 +1,38 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { LoginScreen } from './components/LoginScreen'
 import { Layout } from './components/layout/Layout'
 import { AuthProvider, useAuth, type AuthUser } from './context/AuthContext'
 import { OrdersProvider } from './context/OrdersContext'
+import { getAccessToken } from './lib/api/session'
 import { CreateOrder } from './pages/CreateOrder'
 import { MyTasks } from './pages/MyTasks'
 import { OrderDetail } from './pages/OrderDetail'
 import { OrdersList } from './pages/OrdersList'
 import { ProductionPlanning } from './pages/ProductionPlanning'
+import { useAppDispatch } from './store/hooks'
+import { restoreSession } from './store/slices/authSlice'
+
+function AuthGate({ children }: { children: ReactNode }) {
+  const dispatch = useAppDispatch()
+  const { isBootstrapping } = useAuth()
+
+  useEffect(() => {
+    if (getAccessToken()) {
+      void dispatch(restoreSession())
+    }
+  }, [dispatch])
+
+  if (isBootstrapping) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface text-muted">
+        Restoring session…
+      </div>
+    )
+  }
+
+  return children
+}
 
 function ProtectedRoute({
   path,
@@ -114,7 +138,9 @@ export default function App() {
     <AuthProvider>
       <OrdersProvider>
         <BrowserRouter>
-          <AppRoutes />
+          <AuthGate>
+            <AppRoutes />
+          </AuthGate>
         </BrowserRouter>
       </OrdersProvider>
     </AuthProvider>

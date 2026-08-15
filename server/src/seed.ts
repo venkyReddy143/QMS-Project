@@ -37,6 +37,15 @@ const DEMO_USERS: SeedUser[] = [
     role: 'SUPERVISOR',
     status: 'ACTIVE',
   },
+  {
+    employeeCode: 'EMP-0100',
+    name: 'Plant Manager',
+    email: 'manager@qms.local',
+    phone: '7780291842',
+    password: 'manager@123',
+    role: 'MANAGER',
+    status: 'ACTIVE',
+  },
 ]
 
 const CUSTOMERS = [

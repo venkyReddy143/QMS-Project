@@ -1,11 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Factory, Lock, Phone } from 'lucide-react'
-import {
-  DEMO_USERS,
-  formatPhoneDisplay,
-  useAuth,
-  type AuthUser,
-} from '../context/AuthContext'
+import { useAuth, type AuthUser } from '../context/AuthContext'
 
 interface LoginScreenProps {
   onSuccess: (user: AuthUser) => void
@@ -17,12 +12,6 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  function fillDemo(user: AuthUser) {
-    setPhone(user.phone)
-    setPassword(user.password)
-    setError(null)
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -39,9 +28,11 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
 
     if (!result.ok || !result.user) {
       setError(result.message ?? 'Login failed.')
+      setPassword('')
       return
     }
 
+    setPassword('')
     onSuccess(result.user)
   }
 
@@ -60,7 +51,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
           <label className="block space-y-1.5">
             <span className="text-sm font-semibold text-foreground">
               Phone Number
@@ -72,8 +63,9 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
               </span>
               <input
                 type="tel"
+                name="username"
                 inputMode="numeric"
-                autoComplete="tel"
+                autoComplete="username"
                 value={phone}
                 onChange={(event) =>
                   setPhone(event.target.value.replace(/[^\d]/g, '').slice(0, 10))
@@ -90,6 +82,8 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
               <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
               <input
                 type="password"
+                name="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Enter password"
@@ -112,27 +106,6 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
-
-        <div className="mt-6 border-t border-border pt-4">
-          <p className="mb-2 text-sm font-semibold text-foreground">
-            Quick demo logins
-          </p>
-          <div className="space-y-2">
-            {DEMO_USERS.map((user) => (
-              <button
-                key={user.id}
-                type="button"
-                onClick={() => fillDemo(user)}
-                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted px-3 text-left text-sm transition hover:border-accent"
-              >
-                <span className="font-semibold text-foreground">{user.role}</span>
-                <span className="truncate text-muted">
-                  {formatPhoneDisplay(user.phone)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )

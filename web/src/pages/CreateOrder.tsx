@@ -1,22 +1,10 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { CheckCircle2, PlusCircle, Trash2 } from 'lucide-react'
 import { useOrders } from '../context/OrdersContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { fetchCustomers, fetchProducts } from '../store/slices/mastersSlice'
+import type { ProductProcessStep } from '../types/masters'
 
-const CUSTOMERS = [
-  'AeroDyn Turbines Ltd.',
-  'Prime Aero Components',
-  'NorthWind Energy',
-  'Orbit Precision Castings',
-  'Helix Power Systems',
-]
-
-const PRODUCTS = [
-  'HP Stage-1 Rotor Blade',
-  'LP Stage-2 Stator Vane',
-  'Compressor Blade Set',
-] as const
-
-type ProductName = (typeof PRODUCTS)[number]
 type Priority = 'Normal' | 'High' | 'Urgent'
 type MachineOption = 'Casting' | 'CNC' | 'Coating' | 'NDT' | 'Final Inspection' | 'Packing'
 
@@ -29,34 +17,6 @@ const MACHINE_OPTIONS: MachineOption[] = [
   'Packing',
 ]
 
-const PROCESS_BY_PRODUCT: Record<
-  ProductName,
-  { name: string; hours: number }[]
-> = {
-  'HP Stage-1 Rotor Blade': [
-    { name: 'Casting', hours: 0.45 },
-    { name: 'CNC Machining', hours: 2.5 },
-    { name: 'Coating', hours: 0.8 },
-    { name: 'NDT Testing', hours: 0.3 },
-    { name: 'Final Inspection', hours: 0.2 },
-    { name: 'Packing', hours: 0.15 },
-  ],
-  'LP Stage-2 Stator Vane': [
-    { name: 'Casting', hours: 0.4 },
-    { name: 'CNC Machining', hours: 1.8 },
-    { name: 'NDT Testing', hours: 0.25 },
-    { name: 'Final Inspection', hours: 0.2 },
-    { name: 'Packing', hours: 0.15 },
-  ],
-  'Compressor Blade Set': [
-    { name: 'CNC Machining', hours: 1.2 },
-    { name: 'Coating', hours: 0.6 },
-    { name: 'NDT Testing', hours: 0.2 },
-    { name: 'Final Inspection', hours: 0.15 },
-    { name: 'Packing', hours: 0.1 },
-  ],
-}
-
 interface ProcessStep {
   id: string
   name: string
@@ -64,19 +24,13 @@ interface ProcessStep {
   isCustom: boolean
 }
 
-function buildDefaultSteps(productName: ProductName): ProcessStep[] {
-  return PROCESS_BY_PRODUCT[productName].map((step, index) => ({
-    id: `default-${productName}-${index}-${step.name}`,
+function buildStepsFromProduct(steps: ProductProcessStep[]): ProcessStep[] {
+  return steps.map((step, index) => ({
+    id: step.code || `step-${index + 1}-${step.name}`,
     name: step.name,
-    hours: step.hours,
+    hours: step.hoursPerPiece,
     isCustom: false,
   }))
-}
-
-const UNIT_RATE: Record<ProductName, number> = {
-  'HP Stage-1 Rotor Blade': 18500,
-  'LP Stage-2 Stator Vane': 14200,
-  'Compressor Blade Set': 9800,
 }
 
 const fieldClass =
@@ -111,9 +65,17 @@ function formatInr(value: number): string {
 
 export function CreateOrder() {
   const { createOrder } = useOrders()
+  const dispatch = useAppDispatch()
+  const customers = useAppSelector((state) => state.masters.customers)
+  const products = useAppSelector((state) => state.masters.products)
+  const customersStatus = useAppSelector((state) => state.masters.customersStatus)
+  const productsStatus = useAppSelector((state) => state.masters.productsStatus)
+  const customersError = useAppSelector((state) => state.masters.customersError)
+  const productsError = useAppSelector((state) => state.masters.productsError)
+
   const [customer, setCustomer] = useState('')
   const [customerQuery, setCustomerQuery] = useState('')
-  const [product, setProduct] = useState<ProductName>('HP Stage-1 Rotor Blade')
+  const [productId, setProductId] = useState('')
   const [poNumber, setPoNumber] = useState('')
   const [quantity, setQuantity] = useState('100')
   const [budget, setBudget] = useState('')
@@ -128,32 +90,56 @@ export function CreateOrder() {
   const [priority, setPriority] = useState<Priority>('Normal')
   const [notes, setNotes] = useState('')
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null)
-  const [processSteps, setProcessSteps] = useState<ProcessStep[]>(() =>
-    buildDefaultSteps('HP Stage-1 Rotor Blade'),
-  )
+  const [processSteps, setProcessSteps] = useState<ProcessStep[]>([])
   const [newStepName, setNewStepName] = useState('')
   const [newStepHours, setNewStepHours] = useState('0.50')
   const [stepError, setStepError] = useState<string | null>(null)
 
+  const customerNames = useMemo(
+    () => customers.map((item) => item.name),
+    [customers],
+  )
+  const selectedProduct = useMemo(
+    () => products.find((item) => item.id === productId) ?? null,
+    [products, productId],
+  )
+  const unitRate = selectedProduct?.unitRate ?? 0
+
+  useEffect(() => {
+    void dispatch(fetchCustomers())
+    void dispatch(fetchProducts())
+  }, [dispatch])
+
+  useEffect(() => {
+    if (products.length === 0) return
+    const current = products.find((item) => item.id === productId)
+    if (current) return
+    const first = products[0]
+    setProductId(first.id)
+    setProcessSteps(buildStepsFromProduct(first.processSteps))
+  }, [products, productId])
+
   const filteredCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase()
-    if (!q) return CUSTOMERS
-    return CUSTOMERS.filter((name) => name.toLowerCase().includes(q))
-  }, [customerQuery])
+    if (!q) return customerNames
+    return customerNames.filter((name) => name.toLowerCase().includes(q))
+  }, [customerNames, customerQuery])
 
   const calculatedEstimate = useMemo(() => {
     const qty = Number(quantity) || 0
-    return qty * UNIT_RATE[product]
-  }, [product, quantity])
+    return qty * unitRate
+  }, [quantity, unitRate])
 
   const displayEstimate = estimationManual
     ? Number(estimationPrice) || 0
     : calculatedEstimate
 
-  function applyProductDefaults(nextProduct: ProductName) {
-    setProduct(nextProduct)
+  function applyProductDefaults(nextProductId: string) {
+    const next = products.find((item) => item.id === nextProductId)
+    if (!next) return
+    setProductId(next.id)
     setEstimationManual(false)
-    setProcessSteps(buildDefaultSteps(nextProduct))
+    setProcessSteps(buildStepsFromProduct(next.processSteps))
     setStepError(null)
   }
 
@@ -197,9 +183,10 @@ export function CreateOrder() {
   }
 
   function resetForm() {
+    const first = products[0]
     setCustomer('')
     setCustomerQuery('')
-    setProduct('HP Stage-1 Rotor Blade')
+    setProductId(first?.id ?? '')
     setPoNumber('')
     setQuantity('100')
     setBudget('')
@@ -211,7 +198,7 @@ export function CreateOrder() {
     setPriority('Normal')
     setNotes('')
     setCreatedOrderId(null)
-    setProcessSteps(buildDefaultSteps('HP Stage-1 Rotor Blade'))
+    setProcessSteps(first ? buildStepsFromProduct(first.processSteps) : [])
     setNewStepName('')
     setNewStepHours('0.50')
     setStepError(null)
@@ -220,42 +207,15 @@ export function CreateOrder() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!customer) return
+    if (!selectedProduct) return
     if (processSteps.length === 0) {
       setStepError('Add at least one process step before creating the order.')
       return
     }
 
-    // Payload for backend API (POST /orders or similar)
-    const createOrderPayload = {
-      customer,
-      product,
-      customerPoNumber: poNumber,
-      quantity: Number(quantity) || 1,
-      budgetInr: budget === '' ? null : Number(budget),
-      estimationPriceInr: displayEstimate,
-      estimationIsManual: estimationManual,
-      primaryMachine,
-      additionalMachines,
-      targetDate,
-      priority,
-      notes,
-      processSteps: processSteps.map((step, index) => ({
-        sequence: index + 1,
-        name: step.name,
-        hoursPerPiece: step.hours,
-        isCustom: step.isCustom,
-      })),
-    }
-
-    console.log('[Create Order] API payload for backend:', createOrderPayload)
-    console.log(
-      '[Create Order] JSON string:\n',
-      JSON.stringify(createOrderPayload, null, 2),
-    )
-
     const id = createOrder({
       customer,
-      product,
+      product: selectedProduct.name,
       poNumber,
       qty: Number(quantity) || 1,
       dueDate: targetDate,
@@ -287,7 +247,7 @@ export function CreateOrder() {
               {createdOrderId}
             </p>
             <p className="mt-2 text-sm text-muted">
-              {customer} · {product} · {quantity} pcs
+              {customer} · {selectedProduct?.name} · {quantity} pcs
             </p>
           </div>
           <button
@@ -323,15 +283,20 @@ export function CreateOrder() {
               onChange={(event) => {
                 const value = event.target.value
                 setCustomerQuery(value)
-                setCustomer(CUSTOMERS.includes(value) ? value : '')
+                setCustomer(customerNames.includes(value) ? value : '')
               }}
               onBlur={() => {
-                if (CUSTOMERS.includes(customerQuery)) {
+                if (customerNames.includes(customerQuery)) {
                   setCustomer(customerQuery)
                 }
               }}
-              placeholder="Search or select customer"
+              placeholder={
+                customersStatus === 'loading'
+                  ? 'Loading customers…'
+                  : 'Search or select customer'
+              }
               required
+              disabled={customersStatus === 'loading'}
               className={fieldClass}
             />
             <datalist id="customer-options">
@@ -339,6 +304,9 @@ export function CreateOrder() {
                 <option key={name} value={name} />
               ))}
             </datalist>
+            {customersError ? (
+              <p className="text-sm text-danger">{customersError}</p>
+            ) : null}
             {!customer && customerQuery ? (
               <p className="text-sm text-warning">
                 Select a customer from the list.
@@ -349,18 +317,27 @@ export function CreateOrder() {
           <label className="block space-y-1.5">
             <span className={labelClass}>Product Name</span>
             <select
-              value={product}
-              onChange={(event) =>
-                applyProductDefaults(event.target.value as ProductName)
-              }
+              value={productId}
+              onChange={(event) => applyProductDefaults(event.target.value)}
+              disabled={productsStatus === 'loading' || products.length === 0}
+              required
               className={fieldClass}
             >
-              {PRODUCTS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
+              {productsStatus === 'loading' ? (
+                <option value="">Loading products…</option>
+              ) : products.length === 0 ? (
+                <option value="">No products available</option>
+              ) : (
+                products.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))
+              )}
             </select>
+            {productsError ? (
+              <p className="text-sm text-danger">{productsError}</p>
+            ) : null}
           </label>
 
           <label className="block space-y-1.5">
@@ -433,7 +410,7 @@ export function CreateOrder() {
               Current estimate: {formatInr(displayEstimate)}
             </p>
             <p className="mt-1 text-muted">
-              Rate used: {formatInr(UNIT_RATE[product])} / pc
+              Rate used: {formatInr(unitRate)} / pc
               {budget
                 ? ` · Budget vs estimate: ${
                     Number(budget) >= displayEstimate ? 'Within budget' : 'Over budget'
@@ -500,7 +477,10 @@ export function CreateOrder() {
               </div>
               <button
                 type="button"
-                onClick={() => setProcessSteps(buildDefaultSteps(product))}
+                onClick={() =>
+                  selectedProduct &&
+                  setProcessSteps(buildStepsFromProduct(selectedProduct.processSteps))
+                }
                 className="text-sm font-semibold text-accent hover:underline"
               >
                 Reset to product defaults

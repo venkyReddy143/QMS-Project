@@ -5,7 +5,7 @@ import {
   ListChecks,
   PlusCircle,
 } from 'lucide-react'
-import type { UserRole } from '../context/AuthContext'
+import type { UserRole } from '../types/auth'
 
 export interface NavItem {
   id: string
