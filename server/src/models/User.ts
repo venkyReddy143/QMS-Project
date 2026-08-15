@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs'
 import mongoose, { Schema, type HydratedDocument, type Model } from 'mongoose'
 import { normalizeMobile } from '../utils/phone'
 
@@ -39,7 +40,7 @@ export interface IUser {
 }
 
 export interface IUserMethods {
-  comparePassword(plainPassword: string): boolean
+  comparePassword(plainPassword: string): Promise<boolean>
   toAuthJSON(): AuthUserJSON
 }
 
@@ -99,17 +100,21 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
   { timestamps: true },
 )
 
-userSchema.pre('save', function normalizeUser() {
+userSchema.pre('save', async function hashAndNormalize() {
   if (this.phone) {
     this.phone = normalizeMobile(this.phone)
   }
+
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10)
+  }
 })
 
-userSchema.methods.comparePassword = function comparePassword(
+userSchema.methods.comparePassword = async function comparePassword(
   this: IUserDocument,
   plainPassword: string,
 ) {
-  return plainPassword === this.password
+  return bcrypt.compare(plainPassword, this.password)
 }
 
 userSchema.methods.toAuthJSON = function toAuthJSON(this: IUserDocument) {
