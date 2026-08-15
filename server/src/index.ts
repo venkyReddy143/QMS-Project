@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './config/env'
 import cors from 'cors'
 import express, {
   type NextFunction,
@@ -42,10 +42,6 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 })
 
 async function start() {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is not set')
-  }
-
   await connectDB()
 
   app.listen(PORT, () => {

@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './config/env'
 import mongoose from 'mongoose'
 import { connectDB } from './config/db'
 import { Customer } from './models/Customer'
