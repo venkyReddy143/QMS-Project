@@ -1,7 +1,8 @@
-import 'dotenv/config'
+import './config/env'
 import mongoose from 'mongoose'
 import { connectDB } from './config/db'
 import { Customer } from './models/Customer'
+import { Machine } from './models/Machine'
 import { ProcessRoute } from './models/ProcessRoute'
 import { ProcessStep } from './models/ProcessStep'
 import { Product } from './models/Product'
@@ -125,6 +126,99 @@ const PRODUCTS = [
   },
 ]
 
+const MACHINES = [
+  {
+    machineCode: 'CAST-01',
+    name: 'Investment Casting Furnace 01',
+    machineType: 'Casting',
+    bay: 'A-01',
+    maxHoursPerShift: 8,
+    status: 'AVAILABLE' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'CAST-02',
+    name: 'Investment Casting Furnace 02',
+    machineType: 'Casting',
+    bay: 'A-02',
+    maxHoursPerShift: 8,
+    status: 'AVAILABLE' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'CNC-01',
+    name: '5-Axis CNC Cell 01',
+    machineType: 'CNC',
+    bay: 'B-12',
+    maxHoursPerShift: 7.5,
+    status: 'AVAILABLE' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'CNC-02',
+    name: '5-Axis CNC Cell 02',
+    machineType: 'CNC',
+    bay: 'B-13',
+    maxHoursPerShift: 7.5,
+    status: 'BUSY' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'COAT-01',
+    name: 'Thermal Barrier Coating Line 01',
+    machineType: 'Coating',
+    bay: 'C-04',
+    maxHoursPerShift: 7.5,
+    status: 'AVAILABLE' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'NDT-01',
+    name: 'NDT / Ultrasonic Cell 01',
+    machineType: 'NDT',
+    bay: 'D-02',
+    maxHoursPerShift: 7.5,
+    status: 'AVAILABLE' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'INSP-01',
+    name: 'Final Metrology Station 01',
+    machineType: 'Final Inspection',
+    bay: 'E-01',
+    maxHoursPerShift: 7.5,
+    status: 'AVAILABLE' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'PACK-01',
+    name: 'Pack & Preserve Cell 01',
+    machineType: 'Packing',
+    bay: 'F-03',
+    maxHoursPerShift: 7.5,
+    status: 'AVAILABLE' as const,
+    maintenanceStatus: 'HEALTHY' as const,
+    active: true,
+  },
+  {
+    machineCode: 'CNC-03',
+    name: '5-Axis CNC Cell 03',
+    machineType: 'CNC',
+    bay: 'B-14',
+    maxHoursPerShift: 7.5,
+    status: 'MAINTENANCE' as const,
+    maintenanceStatus: 'ATTENTION' as const,
+    active: true,
+  },
+]
+
 async function upsertUsers() {
   for (const account of DEMO_USERS) {
     const existing = await User.findOne({
@@ -225,12 +319,24 @@ async function upsertProductsAndRoutes() {
   }
 }
 
+async function upsertMachines() {
+  for (const machine of MACHINES) {
+    await Machine.findOneAndUpdate(
+      { machineCode: machine.machineCode },
+      machine,
+      { upsert: true, new: true },
+    )
+  }
+  console.log(`Upserted ${MACHINES.length} machines`)
+}
+
 async function seed() {
   await connectDB()
   await upsertUsers()
   await upsertCustomers()
   await upsertProcessSteps()
   await upsertProductsAndRoutes()
+  await upsertMachines()
   await mongoose.disconnect()
   console.log('Seed complete.')
 }
