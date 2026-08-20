@@ -36,3 +36,16 @@ export const MACHINE_HEALTH_STATUSES = [
   'UNHEALTHY',
 ] as const
 export type MachineHealthStatus = (typeof MACHINE_HEALTH_STATUSES)[number]
+
+export const BATCH_STATUSES = [
+  'SCHEDULED',
+  'RELEASED',
+  'IN_ASSEMBLY',
+  'READY_FOR_QA',
+  'QA_RELEASED',
+  'PARTIALLY_DISPATCHED',
+  'DISPATCHED',
+  'COMPLETED',
+  'ON_HOLD',
+] as const
+export type BatchStatus = (typeof BATCH_STATUSES)[number]
