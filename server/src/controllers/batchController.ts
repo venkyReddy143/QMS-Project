@@ -8,10 +8,14 @@ import {
 } from '../constants/enums'
 import { DeliveryBatch } from '../models/DeliveryBatch'
 import { ProductionOrder } from '../models/ProductionOrder'
+import { User } from '../models/User'
+import { buildBatchSerials } from '../utils/serialNumber'
 
 interface BatchBody {
   orderId?: string
   orderNo?: string
+  productId?: string
+  processStepName?: string
   batchNo?: string
   plannedQuantity?: number | string
   bufferQty?: number | string
@@ -79,6 +83,9 @@ function serializeBatch(
   batch: {
     _id: { toString(): string }
     orderId: { toString(): string } | { _id?: { toString(): string }; orderNo?: string }
+    productId?: { toString(): string }
+    productName?: string
+    processStepName?: string
     batchNo: string
     plannedQuantity: number
     bufferQty: number
@@ -89,6 +96,25 @@ function serializeBatch(
     completedQuantity: number
     dispatchedQuantity: number
     progressPercent: number
+    assignments?: Array<{
+      employeeId: { toString(): string }
+      employeeName: string
+      shift: string
+      assignedAt?: Date
+    }>
+    timeLogs?: Array<{
+      employeeId: { toString(): string }
+      employeeName: string
+      shift: string
+      hours: number
+      note?: string
+      loggedAt?: Date
+    }>
+    serials?: Array<{
+      serialNumber: string
+      sequence: number
+      status: string
+    }>
     createdBy: unknown
     createdAt?: Date
     updatedAt?: Date
@@ -100,10 +126,16 @@ function serializeBatch(
       ? (batch.orderId as { _id?: { toString(): string }; orderNo?: string })
       : null
 
+  const timeLogs = batch.timeLogs ?? []
+  const loggedHours = timeLogs.reduce((sum, log) => sum + (log.hours ?? 0), 0)
+
   return {
     id: batch._id.toString(),
     orderId: order?._id?.toString() ?? String(batch.orderId),
     orderNo: orderNo ?? order?.orderNo ?? '',
+    productId: batch.productId ? String(batch.productId) : '',
+    productName: batch.productName ?? '',
+    processStepName: batch.processStepName ?? '',
     batchNo: batch.batchNo,
     plannedQuantity: batch.plannedQuantity,
     bufferQty: batch.bufferQty ?? 0,
@@ -114,6 +146,27 @@ function serializeBatch(
     completedQuantity: batch.completedQuantity,
     dispatchedQuantity: batch.dispatchedQuantity,
     progressPercent: batch.progressPercent,
+    assignments: (batch.assignments ?? []).map((item) => ({
+      employeeId: item.employeeId.toString(),
+      employeeName: item.employeeName,
+      shift: item.shift,
+      assignedAt: item.assignedAt,
+    })),
+    timeLogs: timeLogs.map((log) => ({
+      employeeId: log.employeeId.toString(),
+      employeeName: log.employeeName,
+      shift: log.shift,
+      hours: log.hours,
+      note: log.note ?? '',
+      loggedAt: log.loggedAt,
+    })),
+    loggedHours,
+    serials: (batch.serials ?? []).map((item) => ({
+      serialNumber: item.serialNumber,
+      sequence: item.sequence,
+      status: item.status,
+    })),
+    serialCount: (batch.serials ?? []).length,
     createdBy: createdByName(batch.createdBy),
     createdById:
       batch.createdBy &&
@@ -141,6 +194,15 @@ async function allocationForOrder(
   ])
 
   return summary?.allocated ?? 0
+}
+
+async function nextSerialSequence(orderId: mongoose.Types.ObjectId) {
+  const [summary] = await DeliveryBatch.aggregate<{ maxSeq: number }>([
+    { $match: { orderId } },
+    { $unwind: { path: '$serials', preserveNullAndEmptyArrays: false } },
+    { $group: { _id: null, maxSeq: { $max: '$serials.sequence' } } },
+  ])
+  return (summary?.maxSeq ?? 0) + 1
 }
 
 export async function createBatch(
@@ -229,7 +291,43 @@ export async function createBatch(
 
     const allocated = await allocationForOrder(order._id)
     const remaining = order.totalQuantity - allocated
-    if (plannedQuantity > remaining) {
+
+    const productId = String(req.body.productId ?? '').trim()
+    const processStepName = String(req.body.processStepName ?? '').trim()
+    const productLine = productId
+      ? order.products.find((line) => line.productId.toString() === productId)
+      : order.products[0]
+
+    if (order.products.length > 0 && !productLine) {
+      res.status(400).json({
+        success: false,
+        message: 'Select a product for this batch.',
+      })
+      return
+    }
+
+    if (productLine) {
+      const match: Record<string, unknown> = {
+        orderId: order._id,
+        productId: productLine.productId,
+        processStepName,
+      }
+      const [productSummary] = await DeliveryBatch.aggregate<{ allocated: number }>([
+        { $match: match },
+        { $group: { _id: null, allocated: { $sum: '$plannedQuantity' } } },
+      ])
+      const productRemaining =
+        productLine.quantity - (productSummary?.allocated ?? 0)
+      if (plannedQuantity > productRemaining) {
+        res.status(400).json({
+          success: false,
+          message: `Planned quantity exceeds remaining qty for ${productLine.productName}${
+            processStepName ? ` / ${processStepName}` : ''
+          } (${productRemaining} pcs).`,
+        })
+        return
+      }
+    } else if (plannedQuantity > remaining) {
       res.status(400).json({
         success: false,
         message: `Planned quantity exceeds remaining order qty (${remaining} pcs).`,
@@ -240,8 +338,19 @@ export async function createBatch(
     const totalBatchQty =
       toNumber(req.body.totalBatchQty) ?? plannedQuantity + bufferQty
 
+    const serials = buildBatchSerials({
+      orderNo: order.orderNo,
+      batchNo,
+      quantity: plannedQuantity,
+      startSequence: await nextSerialSequence(order._id),
+    })
+
     const batch = await DeliveryBatch.create({
       orderId: order._id,
+      orderNo: order.orderNo,
+      productId: productLine?.productId,
+      productName: productLine?.productName ?? order.productNameSnapshot ?? '',
+      processStepName,
       batchNo,
       plannedQuantity,
       bufferQty,
@@ -252,6 +361,9 @@ export async function createBatch(
       completedQuantity: 0,
       dispatchedQuantity: 0,
       progressPercent: 0,
+      assignments: [],
+      timeLogs: [],
+      serials,
       createdBy: req.user._id,
     })
 
@@ -264,7 +376,7 @@ export async function createBatch(
 
     res.status(201).json({
       success: true,
-      message: 'Batch created successfully.',
+      message: `Batch ${batchNo} created with ${serials.length} serial numbers.`,
       batch: serializeBatch(populated, order.orderNo),
       allocation: {
         orderQty: order.totalQuantity,
@@ -508,6 +620,155 @@ export async function updateBatch(
         allocated,
         remaining: Math.max(order.totalQuantity - allocated, 0),
       },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function assignBatch(
+  req: Request<{ orderId?: string; batchId?: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      })
+      return
+    }
+
+    const batchId = String(req.params.batchId ?? req.body.batchId ?? '').trim()
+    const employeeId = String(req.body.employeeId ?? '').trim()
+    const shift = String(req.body.shift ?? '').trim().toUpperCase()
+
+    if (!batchId || !employeeId || !shift) {
+      res.status(400).json({
+        success: false,
+        message: 'Batch, employee, and shift are required.',
+      })
+      return
+    }
+
+    const batch = await DeliveryBatch.findById(batchId)
+    if (!batch) {
+      res.status(404).json({
+        success: false,
+        message: 'Batch not found.',
+      })
+      return
+    }
+
+    const employee = await User.findById(employeeId)
+    if (!employee || employee.status !== 'ACTIVE') {
+      res.status(400).json({
+        success: false,
+        message: 'Selected employee was not found.',
+      })
+      return
+    }
+
+    const alreadyAssigned = batch.assignments.some(
+      (item) =>
+        item.employeeId.toString() === employee._id.toString() &&
+        item.shift === shift,
+    )
+    if (alreadyAssigned) {
+      res.status(400).json({
+        success: false,
+        message: `${employee.name} is already assigned to shift ${shift}.`,
+      })
+      return
+    }
+
+    batch.assignments.push({
+      employeeId: employee._id,
+      employeeName: employee.name,
+      shift,
+      assignedAt: new Date(),
+    })
+    await batch.save()
+
+    res.json({
+      success: true,
+      message: 'Employee assigned to batch.',
+      batch: serializeBatch(batch, batch.orderNo),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function logBatchTime(
+  req: Request<{ orderId?: string; batchId?: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      })
+      return
+    }
+
+    const batchId = String(req.params.batchId ?? req.body.batchId ?? '').trim()
+    const employeeId = String(req.body.employeeId ?? '').trim()
+    const shift = String(req.body.shift ?? '').trim().toUpperCase()
+    const hours = toNumber(req.body.hours)
+    const note = String(req.body.note ?? '').trim()
+
+    if (!batchId || !employeeId || !shift) {
+      res.status(400).json({
+        success: false,
+        message: 'Batch, employee, and shift are required.',
+      })
+      return
+    }
+
+    if (hours === undefined || hours < 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Hours cannot be negative.',
+      })
+      return
+    }
+
+    const batch = await DeliveryBatch.findById(batchId)
+    if (!batch) {
+      res.status(404).json({
+        success: false,
+        message: 'Batch not found.',
+      })
+      return
+    }
+
+    const employee = await User.findById(employeeId)
+    if (!employee || employee.status !== 'ACTIVE') {
+      res.status(400).json({
+        success: false,
+        message: 'Selected employee was not found.',
+      })
+      return
+    }
+
+    batch.timeLogs.push({
+      employeeId: employee._id,
+      employeeName: employee.name,
+      shift,
+      hours,
+      note,
+      loggedAt: new Date(),
+    })
+    await batch.save()
+
+    res.json({
+      success: true,
+      message: 'Time logged.',
+      batch: serializeBatch(batch, batch.orderNo),
     })
   } catch (error) {
     next(error)

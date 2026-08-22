@@ -49,3 +49,11 @@ export const BATCH_STATUSES = [
   'ON_HOLD',
 ] as const
 export type BatchStatus = (typeof BATCH_STATUSES)[number]
+
+export const SERIAL_STATUSES = [
+  'QUEUED',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'ON_HOLD',
+] as const
+export type SerialStatus = (typeof SERIAL_STATUSES)[number]

@@ -4,6 +4,7 @@ import { Machine } from '../models/Machine'
 import { ProcessRoute } from '../models/ProcessRoute'
 import { ProcessStep } from '../models/ProcessStep'
 import { Product } from '../models/Product'
+import { User } from '../models/User'
 
 export async function listCustomers(
   _req: Request,
@@ -141,6 +142,30 @@ export async function listMachines(
         status: machine.status,
         maintenanceStatus: machine.maintenanceStatus ?? 'HEALTHY',
         active: machine.active,
+      })),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function listEmployees(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const employees = await User.find({ status: 'ACTIVE' })
+      .sort({ name: 1 })
+      .lean()
+
+    res.json({
+      success: true,
+      employees: employees.map((employee) => ({
+        id: employee._id.toString(),
+        name: employee.name,
+        employeeCode: employee.employeeCode,
+        role: employee.role,
       })),
     })
   } catch (error) {
