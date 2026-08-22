@@ -53,8 +53,8 @@ const ROLE_ACCESS: Record<
 > = {
   MANAGER: {
     role: 'Order Creator',
-    defaultPath: '/create-order',
-    accessPaths: ['/create-order'],
+    defaultPath: '/orders',
+    accessPaths: ['/orders', '/create-order'],
   },
   SUPERVISOR: {
     role: 'Production Manager',

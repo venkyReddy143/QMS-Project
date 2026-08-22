@@ -18,20 +18,20 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   {
+    id: 'orders',
+    label: 'Orders',
+    path: '/orders',
+    description: 'View and track production orders',
+    icon: ClipboardList,
+    roles: ['Order Creator', 'Production Manager', 'Floor Manager'],
+  },
+  {
     id: 'create-order',
-    label: 'Create Order',
+    label: 'Create New Order',
     path: '/create-order',
     description: 'Create a new manufacturing order inquiry',
     icon: PlusCircle,
     roles: ['Order Creator'],
-  },
-  {
-    id: 'orders',
-    label: 'Orders List',
-    path: '/orders',
-    description: 'View and track production orders',
-    icon: ClipboardList,
-    roles: ['Production Manager', 'Floor Manager'],
   },
   {
     id: 'production-planning',

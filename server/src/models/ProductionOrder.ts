@@ -15,20 +15,34 @@ export interface IOrderProcessStep {
   isCustom: boolean
 }
 
+export interface IOrderProductLine {
+  productId: Types.ObjectId
+  productCode: string
+  productName: string
+  quantity: number
+  uom: string
+  unitRate: number
+  estimationPrice: number
+  primaryMachineId?: Types.ObjectId
+  primaryMachineType?: string
+  processSteps: IOrderProcessStep[]
+}
+
 export interface IProductionOrder {
   orderNo: string
-  customerName: string
+  customerName?: string
   customerPoRef: string
-  productId: Types.ObjectId
-  productCodeSnapshot: string
-  productNameSnapshot: string
+  products: IOrderProductLine[]
+  productId?: Types.ObjectId
+  productCodeSnapshot?: string
+  productNameSnapshot?: string
   totalQuantity: number
   uom: string
   budget?: number
   estimationPrice: number
   routeId?: Types.ObjectId
   processSteps: IOrderProcessStep[]
-  primaryMachineType: string
+  primaryMachineType?: string
   additionalMachineTypes: string[]
   dueDate: Date
   priority: OrderPriority
@@ -49,6 +63,64 @@ const orderProcessStepSchema = new Schema<IOrderProcessStep>(
   { _id: false },
 )
 
+const orderProductLineSchema = new Schema<IOrderProductLine>(
+  {
+    productId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Product',
+      required: true,
+    },
+    productCode: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    productName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    uom: {
+      type: String,
+      required: true,
+      default: 'PCS',
+      uppercase: true,
+      trim: true,
+    },
+    unitRate: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    estimationPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    primaryMachineId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Machine',
+    },
+    primaryMachineType: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    processSteps: {
+      type: [orderProcessStepSchema],
+      default: [],
+    },
+  },
+  { _id: false },
+)
+
 const productionOrderSchema = new Schema<IProductionOrder>(
   {
     orderNo: {
@@ -59,27 +131,28 @@ const productionOrderSchema = new Schema<IProductionOrder>(
     },
     customerName: {
       type: String,
-      required: true,
       trim: true,
+      default: '',
     },
     customerPoRef: {
       type: String,
       required: true,
       trim: true,
     },
+    products: {
+      type: [orderProductLineSchema],
+      default: [],
+    },
     productId: {
       type: Schema.Types.ObjectId,
       ref: 'Product',
-      required: true,
     },
     productCodeSnapshot: {
       type: String,
-      required: true,
       trim: true,
     },
     productNameSnapshot: {
       type: String,
-      required: true,
       trim: true,
     },
     totalQuantity: {
@@ -109,16 +182,12 @@ const productionOrderSchema = new Schema<IProductionOrder>(
     },
     processSteps: {
       type: [orderProcessStepSchema],
-      required: true,
-      validate: {
-        validator: (steps: IOrderProcessStep[]) => steps.length > 0,
-        message: 'At least one process step is required.',
-      },
+      default: [],
     },
     primaryMachineType: {
       type: String,
-      required: true,
       trim: true,
+      default: '',
     },
     additionalMachineTypes: {
       type: [String],
