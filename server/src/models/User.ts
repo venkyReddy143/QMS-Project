@@ -6,12 +6,34 @@ export const USER_ROLES = [
   'SHOP_FLOOR_OPERATOR',
   'SUPERVISOR',
   'MANAGER',
+  'SUPER_ADMIN',
 ] as const
 
 export const USER_STATUSES = ['ACTIVE', 'INACTIVE'] as const
 
 export type UserRole = (typeof USER_ROLES)[number]
 export type UserStatus = (typeof USER_STATUSES)[number]
+
+export function normalizeUserRole(value: string | undefined): UserRole | undefined {
+  const key = String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_')
+
+  const aliases: Record<string, UserRole> = {
+    SHOP_FLOOR_OPERATOR: 'SHOP_FLOOR_OPERATOR',
+    FLOOR_MANAGER: 'SHOP_FLOOR_OPERATOR',
+    OPERATOR: 'SHOP_FLOOR_OPERATOR',
+    SUPERVISOR: 'SUPERVISOR',
+    PRODUCTION_MANAGER: 'SUPERVISOR',
+    MANAGER: 'MANAGER',
+    ORDER_CREATOR: 'MANAGER',
+    SUPER_ADMIN: 'SUPER_ADMIN',
+    SUPERADMIN: 'SUPER_ADMIN',
+  }
+
+  return aliases[key]
+}
 
 export interface AuthUserJSON {
   id: string
@@ -139,7 +161,7 @@ userSchema.methods.toAuthJSON = function toAuthJSON(this: IUserDocument) {
     name: this.name,
     email: this.email,
     phone: this.phone,
-    role: this.role,
+    role: normalizeUserRole(this.role) ?? this.role,
     status: this.status,
     lastLoginAt: this.lastLoginAt ?? null,
     createdAt: this.createdAt,

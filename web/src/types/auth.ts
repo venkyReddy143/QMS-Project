@@ -1,9 +1,14 @@
-export type ApiUserRole = 'MANAGER' | 'SUPERVISOR' | 'SHOP_FLOOR_OPERATOR'
+export type ApiUserRole =
+  | 'MANAGER'
+  | 'SUPERVISOR'
+  | 'SHOP_FLOOR_OPERATOR'
+  | 'SUPER_ADMIN'
 
 export type UserRole =
   | 'Order Creator'
   | 'Production Manager'
   | 'Floor Manager'
+  | 'Super Admin'
 
 export interface ApiUser {
   id: string
@@ -66,10 +71,37 @@ const ROLE_ACCESS: Record<
     defaultPath: '/orders',
     accessPaths: ['/orders', '/production-planning', '/my-tasks'],
   },
+  SUPER_ADMIN: {
+    role: 'Super Admin',
+    defaultPath: '/dashboard',
+    accessPaths: [
+      '/dashboard',
+      '/admin',
+      '/orders',
+      '/create-order',
+      '/production-planning',
+      '/my-tasks',
+    ],
+  },
+}
+
+export function normalizeApiRole(role: string | undefined): ApiUserRole {
+  const key = String(role ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_')
+
+  if (key === 'SUPER_ADMIN' || key === 'SUPERADMIN') return 'SUPER_ADMIN'
+  if (key === 'MANAGER' || key === 'ORDER_CREATOR') return 'MANAGER'
+  if (key === 'SHOP_FLOOR_OPERATOR' || key === 'FLOOR_MANAGER') {
+    return 'SHOP_FLOOR_OPERATOR'
+  }
+  return 'SUPERVISOR'
 }
 
 export function mapApiUser(user: ApiUser): AuthUser {
-  const access = ROLE_ACCESS[user.role] ?? ROLE_ACCESS.SUPERVISOR
+  const apiRole = normalizeApiRole(user.role)
+  const access = ROLE_ACCESS[apiRole]
 
   return {
     id: user.id,
@@ -77,7 +109,7 @@ export function mapApiUser(user: ApiUser): AuthUser {
     phone: user.phone,
     name: user.name,
     email: user.email,
-    apiRole: user.role,
+    apiRole,
     ...access,
   }
 }
@@ -86,6 +118,18 @@ export function canAccessPath(user: AuthUser | null, path: string): boolean {
   if (!user) return false
   return user.accessPaths.some(
     (allowed) => path === allowed || path.startsWith(`${allowed}/`),
+  )
+}
+
+export function canCreateOrders(role?: UserRole | null): boolean {
+  return role === 'Order Creator' || role === 'Super Admin'
+}
+
+export function canPlanProduction(role?: UserRole | null): boolean {
+  return (
+    role === 'Production Manager' ||
+    role === 'Floor Manager' ||
+    role === 'Super Admin'
   )
 }
 

@@ -15,6 +15,7 @@ interface CreateOrderBody {
   products?: Array<{
     productId?: string
     quantity?: number | string
+    description?: string
   }>
   productId?: string
   totalQuantity?: number | string
@@ -55,6 +56,7 @@ function productLinesFromOrder(order: {
       productCode: line.productCode,
       productName: line.productName,
       quantity: line.quantity,
+      description: line.description ?? '',
       uom: line.uom,
       unitRate: line.unitRate,
       estimationPrice: line.estimationPrice,
@@ -77,6 +79,7 @@ function productLinesFromOrder(order: {
       productCode: order.productCodeSnapshot ?? '',
       productName: order.productNameSnapshot ?? '',
       quantity: order.totalQuantity,
+      description: '',
       uom: order.uom,
       unitRate: 0,
       estimationPrice: order.estimationPrice,
@@ -240,6 +243,7 @@ export async function createOrder(
         productCode: product.productCode,
         productName: product.name,
         quantity,
+        description: String(line.description ?? '').trim(),
         uom: product.uom,
         unitRate: product.unitRate,
         estimationPrice: quantity * product.unitRate,
