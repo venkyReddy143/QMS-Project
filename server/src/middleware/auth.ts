@@ -49,3 +49,27 @@ export async function requireAuth(
     })
   }
 }
+
+export function requireSuperAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Authentication required.',
+    })
+    return
+  }
+
+  if (req.user.role !== 'SUPER_ADMIN') {
+    res.status(403).json({
+      success: false,
+      message: 'Super Admin access required.',
+    })
+    return
+  }
+
+  next()
+}

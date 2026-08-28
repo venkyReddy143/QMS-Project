@@ -20,6 +20,7 @@ export interface IOrderProductLine {
   productCode: string
   productName: string
   quantity: number
+  description?: string
   uom: string
   unitRate: number
   estimationPrice: number
@@ -84,6 +85,11 @@ const orderProductLineSchema = new Schema<IOrderProductLine>(
       type: Number,
       required: true,
       min: 1,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
     },
     uom: {
       type: String,

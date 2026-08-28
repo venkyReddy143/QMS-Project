@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PlusCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { canCreateOrders } from '../types/auth'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { fetchOrders } from '../store/slices/ordersSlice'
 import type { OrderProductLine } from '../types/orders'
@@ -53,7 +54,7 @@ export function OrdersList() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const canCreate = user?.role === 'Order Creator'
+  const canCreate = canCreateOrders(user?.role)
   const orders = useAppSelector((state) => state.orders.items)
   const listStatus = useAppSelector((state) => state.orders.listStatus)
   const listError = useAppSelector((state) => state.orders.listError)

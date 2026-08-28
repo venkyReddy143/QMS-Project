@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, PlusCircle, Trash2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { canPlanProduction } from '../types/auth'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import {
   fetchCustomers,
@@ -133,8 +134,7 @@ export function OrderDetail() {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const { user } = useAuth()
-  const canEdit =
-    user?.role === 'Production Manager' || user?.role === 'Floor Manager'
+  const canEdit = canPlanProduction(user?.role)
 
   const order = useAppSelector((state) => state.orders.current)
   const detailStatus = useAppSelector((state) => state.orders.detailStatus)
@@ -495,6 +495,11 @@ export function OrderDetail() {
                 <p className="mt-1 text-sm text-muted">
                   {line.productCode} · {line.quantity} {line.uom.toLowerCase()}
                 </p>
+                {line.description ? (
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+                    {line.description}
+                  </p>
+                ) : null}
 
                 <label className="mt-4 block space-y-1.5">
                   <span className={labelClass}>Machine</span>
@@ -701,6 +706,11 @@ export function OrderDetail() {
               <p className="mt-1 text-sm text-muted">
                 {line.productCode} · {line.quantity} {line.uom.toLowerCase()}
               </p>
+              {line.description ? (
+                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+                  {line.description}
+                </p>
+              ) : null}
               <p className="mt-3 text-sm">
                 <span className="font-bold">Machine: </span>
                 {line.primaryMachineType || 'Not added yet'}

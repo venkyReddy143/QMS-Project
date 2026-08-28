@@ -6,10 +6,13 @@ import { AuthProvider, useAuth, type AuthUser } from './context/AuthContext'
 import { OrdersProvider } from './context/OrdersContext'
 import { getAccessToken } from './lib/api/session'
 import { CreateOrder } from './pages/CreateOrder'
+import { AdminMasters } from './pages/AdminMasters'
+import { AdminUsers } from './pages/AdminUsers'
 import { MyTasks } from './pages/MyTasks'
 import { OrderDetail } from './pages/OrderDetail'
 import { OrdersList } from './pages/OrdersList'
 import { ProductionPlanning } from './pages/ProductionPlanning'
+import { SuperAdminDashboard } from './pages/SuperAdminDashboard'
 import { useAppDispatch } from './store/hooks'
 import { restoreSession } from './store/slices/authSlice'
 
@@ -83,6 +86,30 @@ function AppRoutes() {
         <Route
           index
           element={<Navigate to={user?.defaultPath ?? '/orders'} replace />}
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute path="/dashboard">
+              <SuperAdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute path="/admin/users">
+              <AdminUsers />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/masters"
+          element={
+            <ProtectedRoute path="/admin/masters">
+              <AdminMasters />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/create-order"

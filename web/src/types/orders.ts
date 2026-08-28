@@ -3,6 +3,7 @@ export type OrderPriorityApi = 'NORMAL' | 'HIGH' | 'URGENT'
 export interface CreateOrderProductPayload {
   productId: string
   quantity: number
+  description?: string
 }
 
 export interface CreateOrderPayload {
@@ -27,6 +28,7 @@ export interface OrderProductLine {
   productCode: string
   productName: string
   quantity: number
+  description?: string
   uom: string
   unitRate: number
   estimationPrice: number

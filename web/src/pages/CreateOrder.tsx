@@ -12,6 +12,7 @@ interface ProductLine {
   key: string
   productId: string
   quantity: string
+  description: string
 }
 
 const fieldClass =
@@ -49,7 +50,7 @@ function newLineKey(): string {
 }
 
 function emptyLine(): ProductLine {
-  return { key: newLineKey(), productId: '', quantity: '' }
+  return { key: newLineKey(), productId: '', quantity: '', description: '' }
 }
 
 type FieldErrors = {
@@ -123,7 +124,9 @@ export function CreateOrder() {
     setLines((current) =>
       current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
     )
-    setEstimationManual(false)
+    if (patch.productId !== undefined || patch.quantity !== undefined) {
+      setEstimationManual(false)
+    }
   }
 
   function addLine() {
@@ -196,6 +199,7 @@ export function CreateOrder() {
       .map((line) => ({
         productId: line.productId,
         quantity: Number(line.quantity),
+        description: line.description.trim(),
       }))
       .filter((line) => line.productId && Number.isInteger(line.quantity) && line.quantity >= 1)
 
@@ -254,6 +258,9 @@ export function CreateOrder() {
               {(lastCreated.products ?? []).map((line) => (
                 <li key={line.productId}>
                   {line.productName} · {line.quantity} pcs
+                  {line.description ? (
+                    <span className="mt-0.5 block text-muted">{line.description}</span>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -388,6 +395,19 @@ export function CreateOrder() {
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
+
+                  <label className="block space-y-1.5 sm:col-span-3">
+                    <span className={labelClass}>Description</span>
+                    <textarea
+                      value={line.description}
+                      onChange={(event) =>
+                        updateLine(line.key, { description: event.target.value })
+                      }
+                      rows={3}
+                      placeholder="Add a description for this product"
+                      className="w-full rounded-xl border border-border bg-surface-muted px-3 py-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    />
+                  </label>
 
                   {selected ? (
                     <p className="sm:col-span-3 text-sm text-muted">

@@ -1,9 +1,12 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   ClipboardList,
+  Cog,
   Factory,
+  LayoutDashboard,
   ListChecks,
   PlusCircle,
+  Users,
 } from 'lucide-react'
 import type { UserRole } from '../types/auth'
 
@@ -18,12 +21,36 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   {
+    id: 'dashboard',
+    label: 'Dashboard',
+    path: '/dashboard',
+    description: 'Super Admin overview of users, masters, and orders',
+    icon: LayoutDashboard,
+    roles: ['Super Admin'],
+  },
+  {
+    id: 'admin-users',
+    label: 'Users',
+    path: '/admin/users',
+    description: 'Create users and assign roles',
+    icon: Users,
+    roles: ['Super Admin'],
+  },
+  {
+    id: 'admin-masters',
+    label: 'Masters',
+    path: '/admin/masters',
+    description: 'Manage machines, products, process steps, and customers',
+    icon: Cog,
+    roles: ['Super Admin'],
+  },
+  {
     id: 'orders',
     label: 'Orders',
     path: '/orders',
     description: 'View and track production orders',
     icon: ClipboardList,
-    roles: ['Order Creator', 'Production Manager', 'Floor Manager'],
+    roles: ['Order Creator', 'Production Manager', 'Floor Manager', 'Super Admin'],
   },
   {
     id: 'create-order',
@@ -31,7 +58,7 @@ export const navItems: NavItem[] = [
     path: '/create-order',
     description: 'Create a new manufacturing order inquiry',
     icon: PlusCircle,
-    roles: ['Order Creator'],
+    roles: ['Order Creator', 'Super Admin'],
   },
   {
     id: 'production-planning',
@@ -39,7 +66,7 @@ export const navItems: NavItem[] = [
     path: '/production-planning',
     description: 'Log serial progress by shift across shared batches',
     icon: Factory,
-    roles: ['Production Manager', 'Floor Manager'],
+    roles: ['Production Manager', 'Floor Manager', 'Super Admin'],
   },
   {
     id: 'my-tasks',
@@ -47,7 +74,7 @@ export const navItems: NavItem[] = [
     path: '/my-tasks',
     description: 'Resolve progress disputes — Floor Manager final decision',
     icon: ListChecks,
-    roles: ['Production Manager', 'Floor Manager'],
+    roles: ['Production Manager', 'Floor Manager', 'Super Admin'],
   },
 ]
 

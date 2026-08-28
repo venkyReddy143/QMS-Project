@@ -8,6 +8,7 @@ import express, {
 import path from 'path'
 
 import { connectDB } from './config/db'
+import { adminRoutes } from './routes/adminRoutes'
 import { authRoutes } from './routes/authRoutes'
 import { batchRoutes } from './routes/batchRoutes'
 import { masterRoutes } from './routes/masterRoutes'
@@ -46,6 +47,7 @@ app.get('/api/health', (_req, res) => {
 // =========================
 
 app.use('/api/auth', authRoutes)
+app.use('/api/admin', adminRoutes)
 app.use('/api', masterRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/batches', batchRoutes)
