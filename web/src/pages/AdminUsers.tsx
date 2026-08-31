@@ -31,7 +31,7 @@ function emptyForm() {
   }
 }
 
-export function AdminUsers() {
+export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<AdminUserRecord[]>([])
   const [form, setForm] = useState(emptyForm)
@@ -170,10 +170,11 @@ export function AdminUsers() {
     <div className="space-y-4">
       <section className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-surface-raised p-5">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Users</h2>
+          <h2 className="text-2xl font-bold text-foreground">{title}</h2>
           <p className="mt-1 text-base text-muted">
-            Create users and assign or update their roles. Existing role screens stay
-            unchanged.
+            {title === 'Workers'
+              ? 'Create workers and assign or update their roles.'
+              : 'Create users and assign or update their roles. Existing role screens stay unchanged.'}
           </p>
         </div>
         <button
@@ -182,11 +183,11 @@ export function AdminUsers() {
           className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-bold text-white hover:brightness-110"
         >
           {showForm ? (
-            'View Users'
+            title === 'Workers' ? 'View Workers' : 'View Users'
           ) : (
             <>
               <PlusCircle className="h-4 w-4" />
-              Create User
+              {title === 'Workers' ? 'Create Worker' : 'Create User'}
             </>
           )}
         </button>
@@ -195,7 +196,13 @@ export function AdminUsers() {
       {showForm ? (
         <section className="rounded-2xl border border-border bg-surface-raised p-5">
           <h3 className="mb-4 text-lg font-bold">
-            {editingId ? 'Update User' : 'Create User'}
+            {editingId
+              ? title === 'Workers'
+                ? 'Update Worker'
+                : 'Update User'
+              : title === 'Workers'
+                ? 'Create Worker'
+                : 'Create User'}
           </h3>
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1.5">
@@ -309,7 +316,15 @@ export function AdminUsers() {
               disabled={saving}
               className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white disabled:opacity-70"
             >
-              {saving ? 'Saving…' : editingId ? 'Update User' : 'Create User'}
+              {saving
+                ? 'Saving…'
+                : editingId
+                  ? title === 'Workers'
+                    ? 'Update Worker'
+                    : 'Update User'
+                  : title === 'Workers'
+                    ? 'Create Worker'
+                    : 'Create User'}
             </button>
           </div>
         </form>

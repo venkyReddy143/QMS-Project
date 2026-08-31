@@ -1,20 +1,30 @@
 import { Router } from 'express'
 import {
   adminSummary,
+  createCalendar,
   createCustomer,
   createMachine,
+  createMachineType,
   createProcessStep,
   createProduct,
+  deleteCalendar,
   deleteCustomer,
   deleteMachine,
+  deleteMachineType,
   deleteProcessStep,
   deleteProduct,
+  listAdminCalendars,
   listAdminCustomers,
   listAdminMachines,
+  listAdminMachineTypes,
   listAdminProcessSteps,
   listAdminProducts,
+  getCalendarDayStats,
+  getCalendarHistory,
+  updateCalendar,
   updateCustomer,
   updateMachine,
+  updateMachineType,
   updateProcessStep,
   updateProduct,
 } from '../controllers/adminMasterController'
@@ -56,3 +66,15 @@ adminRoutes.get('/customers', listAdminCustomers)
 adminRoutes.post('/customers', createCustomer)
 adminRoutes.patch('/customers/:id', updateCustomer)
 adminRoutes.delete('/customers/:id', deleteCustomer)
+
+adminRoutes.get('/machine-types', listAdminMachineTypes)
+adminRoutes.post('/machine-types', createMachineType)
+adminRoutes.patch('/machine-types/:id', updateMachineType)
+adminRoutes.delete('/machine-types/:id', deleteMachineType)
+
+adminRoutes.get('/calendars', listAdminCalendars)
+adminRoutes.get('/calendars/day-stats', getCalendarDayStats)
+adminRoutes.get('/calendars/history', getCalendarHistory)
+adminRoutes.post('/calendars', createCalendar)
+adminRoutes.patch('/calendars/:id', updateCalendar)
+adminRoutes.delete('/calendars/:id', deleteCalendar)

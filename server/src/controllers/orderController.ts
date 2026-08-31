@@ -107,6 +107,7 @@ function serializeOrder(order: {
   priority: OrderPriority
   notes?: string
   status: string
+  createdBy?: { toString(): string }
   createdAt?: Date
   updatedAt?: Date
 }) {
@@ -134,6 +135,7 @@ function serializeOrder(order: {
     priority: order.priority,
     notes: order.notes ?? '',
     status: order.status,
+    createdBy: order.createdBy?.toString() ?? '',
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   }

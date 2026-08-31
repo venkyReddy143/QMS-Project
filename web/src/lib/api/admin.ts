@@ -1,7 +1,13 @@
 import type {
   AdminCustomersResponse,
   AdminCustomer,
+  AdminCalendar,
+  AdminCalendarsResponse,
+  CalendarDayStatsResponse,
+  CalendarHistoryResponse,
   AdminMachine,
+  AdminMachineType,
+  AdminMachineTypesResponse,
   AdminMachinesResponse,
   AdminProcessStep,
   AdminProcessStepsResponse,
@@ -132,4 +138,67 @@ export function updateAdminCustomerApi(id: string, payload: Partial<AdminCustome
 
 export function deleteAdminCustomerApi(id: string) {
   return del<{ success: boolean; message: string }>(`/admin/customers/${id}`)
+}
+
+export function fetchAdminMachineTypesApi() {
+  return get<AdminMachineTypesResponse>('/admin/machine-types')
+}
+
+export function createAdminMachineTypeApi(payload: Partial<AdminMachineType>) {
+  return post<{
+    success: boolean
+    message: string
+    machineType?: AdminMachineType
+  }>('/admin/machine-types', payload)
+}
+
+export function updateAdminMachineTypeApi(
+  id: string,
+  payload: Partial<AdminMachineType>,
+) {
+  return patch<{
+    success: boolean
+    message: string
+    machineType?: AdminMachineType
+  }>(`/admin/machine-types/${id}`, payload)
+}
+
+export function deleteAdminMachineTypeApi(id: string) {
+  return del<{ success: boolean; message: string }>(`/admin/machine-types/${id}`)
+}
+
+export function fetchCalendarDayStatsApi(date: string) {
+  return get<CalendarDayStatsResponse>('/admin/calendars/day-stats', {
+    params: { date },
+  })
+}
+
+export function fetchCalendarHistoryApi(from?: string, to?: string) {
+  return get<CalendarHistoryResponse>('/admin/calendars/history', {
+    params: { from, to },
+  })
+}
+
+export function fetchAdminCalendarsApi() {
+  return get<AdminCalendarsResponse>('/admin/calendars')
+}
+
+export function createAdminCalendarApi(payload: Partial<AdminCalendar>) {
+  return post<{
+    success: boolean
+    message: string
+    calendar?: AdminCalendar
+  }>('/admin/calendars', payload)
+}
+
+export function updateAdminCalendarApi(id: string, payload: Partial<AdminCalendar>) {
+  return patch<{
+    success: boolean
+    message: string
+    calendar?: AdminCalendar
+  }>(`/admin/calendars/${id}`, payload)
+}
+
+export function deleteAdminCalendarApi(id: string) {
+  return del<{ success: boolean; message: string }>(`/admin/calendars/${id}`)
 }

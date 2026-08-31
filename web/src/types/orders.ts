@@ -69,6 +69,7 @@ export interface ProductionOrder {
   priority?: string
   notes?: string
   status: string
+  createdBy?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -137,6 +138,7 @@ export interface ProductionBatch {
   serials: BatchSerial[]
   serialCount?: number
   createdBy?: string
+  createdById?: string
   createdAt?: string
 }
 

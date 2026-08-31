@@ -13,6 +13,7 @@ import { OrderDetail } from './pages/OrderDetail'
 import { OrdersList } from './pages/OrdersList'
 import { ProductionPlanning } from './pages/ProductionPlanning'
 import { SuperAdminDashboard } from './pages/SuperAdminDashboard'
+import { SuperAdminProduction } from './pages/SuperAdminProduction'
 import { useAppDispatch } from './store/hooks'
 import { restoreSession } from './store/slices/authSlice'
 
@@ -99,7 +100,7 @@ function AppRoutes() {
           path="/admin/users"
           element={
             <ProtectedRoute path="/admin/users">
-              <AdminUsers />
+              <Navigate to="/masters/workers" replace />
             </ProtectedRoute>
           }
         />
@@ -107,7 +108,103 @@ function AppRoutes() {
           path="/admin/masters"
           element={
             <ProtectedRoute path="/admin/masters">
-              <AdminMasters />
+              <Navigate to="/masters/machines" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/products"
+          element={
+            <ProtectedRoute path="/masters/products">
+              <AdminMasters section="products" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/machine-types"
+          element={
+            <ProtectedRoute path="/masters/machine-types">
+              <AdminMasters section="machine-types" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/machines"
+          element={
+            <ProtectedRoute path="/masters/machines">
+              <AdminMasters section="machines" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/calendars"
+          element={
+            <ProtectedRoute path="/masters/calendars">
+              <AdminMasters section="calendars" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/workers"
+          element={
+            <ProtectedRoute path="/masters/workers">
+              <AdminUsers title="Workers" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/process-steps"
+          element={
+            <ProtectedRoute path="/masters/process-steps">
+              <AdminMasters section="process-steps" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/customers"
+          element={
+            <ProtectedRoute path="/masters/customers">
+              <AdminMasters section="customers" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order/my-orders/active"
+          element={
+            <ProtectedRoute path="/order/my-orders/active">
+              <OrdersList key="my-active" scope="mine" view="active" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order/my-orders/all"
+          element={
+            <ProtectedRoute path="/order/my-orders/all">
+              <OrdersList key="my-all" scope="mine" view="all" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order/orders/active"
+          element={
+            <ProtectedRoute path="/order/orders/active">
+              <OrdersList key="all-active" scope="all" view="active" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order/orders/all"
+          element={
+            <ProtectedRoute path="/order/orders/all">
+              <OrdersList key="all-all" scope="all" view="all" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/production/my-production/:view"
+          element={
+            <ProtectedRoute path="/production/my-production">
+              <SuperAdminProduction />
             </ProtectedRoute>
           }
         />

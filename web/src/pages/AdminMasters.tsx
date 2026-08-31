@@ -1,28 +1,38 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { PlusCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react'
 import {
   createAdminCustomerApi,
   createAdminMachineApi,
+  createAdminMachineTypeApi,
   createAdminProcessStepApi,
   createAdminProductApi,
   deleteAdminCustomerApi,
   deleteAdminMachineApi,
+  deleteAdminMachineTypeApi,
   deleteAdminProcessStepApi,
   deleteAdminProductApi,
+  fetchAdminCalendarsApi,
+  fetchCalendarDayStatsApi,
+  fetchCalendarHistoryApi,
   fetchAdminCustomersApi,
   fetchAdminMachinesApi,
+  fetchAdminMachineTypesApi,
   fetchAdminProcessStepsApi,
   fetchAdminProductsApi,
   updateAdminCustomerApi,
   updateAdminMachineApi,
+  updateAdminMachineTypeApi,
   updateAdminProcessStepApi,
   updateAdminProductApi,
 } from '../lib/api/admin'
 import type {
+  AdminCalendar,
   AdminCustomer,
   AdminMachine,
+  AdminMachineType,
   AdminProcessStep,
   AdminProduct,
+  CalendarDayStats,
 } from '../types/admin'
 
 const fieldClass =
@@ -30,13 +40,51 @@ const fieldClass =
 
 const labelClass = 'block text-sm font-bold text-foreground'
 
-type Tab = 'machines' | 'products' | 'process-steps' | 'customers'
+type Tab =
+  | 'machines'
+  | 'products'
+  | 'process-steps'
+  | 'customers'
+  | 'machine-types'
+  | 'calendars'
 
-const TAB_ACTIONS: Record<Tab, { create: string; view: string }> = {
-  machines: { create: 'Create Machine', view: 'View Machines' },
-  products: { create: 'Create Product', view: 'View Products' },
-  'process-steps': { create: 'Create Process Step', view: 'View Process Steps' },
-  customers: { create: 'Create Customer', view: 'View Customers' },
+const TAB_ACTIONS: Record<Tab, { create: string; view: string; heading: string; description: string }> = {
+  machines: {
+    create: 'Create Machine',
+    view: 'View Machines',
+    heading: 'Machines',
+    description: 'Create and maintain shop-floor machines.',
+  },
+  products: {
+    create: 'Create Product',
+    view: 'View Products',
+    heading: 'Products',
+    description: 'Create and maintain product masters.',
+  },
+  'process-steps': {
+    create: 'Create Process Step',
+    view: 'View Process Steps',
+    heading: 'Process Steps',
+    description: 'Create and maintain process steps.',
+  },
+  customers: {
+    create: 'Create Customer',
+    view: 'View Customers',
+    heading: 'Customers',
+    description: 'Create and maintain customers.',
+  },
+  'machine-types': {
+    create: 'Create Machine Type',
+    view: 'View Machine Types',
+    heading: 'Machine Types',
+    description: 'Create and maintain machine types used on machines.',
+  },
+  calendars: {
+    create: 'Create Calendar',
+    view: 'View Calenders',
+    heading: 'Calenders',
+    description: 'Select a date or browse past days to view plant activity.',
+  },
 }
 
 interface MasterTabProps {
@@ -46,12 +94,20 @@ interface MasterTabProps {
   createTick: number
 }
 
-export function AdminMasters() {
-  const [tab, setTab] = useState<Tab>('machines')
+export function AdminMasters({ section }: { section?: Tab } = {}) {
+  const [tab, setTab] = useState<Tab>(section ?? 'machines')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [createTick, setCreateTick] = useState(0)
+
+  useEffect(() => {
+    if (!section) return
+    setTab(section)
+    setShowForm(false)
+    setError(null)
+    setMessage(null)
+  }, [section])
 
   function flash(nextError: string | null, nextMessage: string | null) {
     setError(nextError)
@@ -64,11 +120,16 @@ export function AdminMasters() {
     <div className="space-y-4">
       <section className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-surface-raised p-5">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Masters</h2>
+          <h2 className="text-2xl font-bold text-foreground">
+            {section ? action.heading : 'Masters'}
+          </h2>
           <p className="mt-1 text-base text-muted">
-            Create, update, or delete machines, products, process steps, and customers.
+            {section
+              ? action.description
+              : 'Create, update, or delete machines, products, process steps, and customers.'}
           </p>
         </div>
+        {tab !== 'calendars' ? (
         <button
           type="button"
           onClick={() => {
@@ -90,8 +151,10 @@ export function AdminMasters() {
             </>
           )}
         </button>
+        ) : null}
       </section>
 
+      {!section ? (
       <div className="flex flex-wrap gap-2">
         {(
           [
@@ -119,6 +182,7 @@ export function AdminMasters() {
           </button>
         ))}
       </div>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-red-50 px-4 py-3 text-sm font-medium text-danger">
@@ -163,6 +227,22 @@ export function AdminMasters() {
           createTick={createTick}
         />
       ) : null}
+      {tab === 'machine-types' ? (
+        <MachineTypesTab
+          onNotice={flash}
+          showForm={showForm}
+          onShowForm={setShowForm}
+          createTick={createTick}
+        />
+      ) : null}
+      {tab === 'calendars' ? (
+        <CalendarsTab
+          onNotice={flash}
+          showForm={showForm}
+          onShowForm={setShowForm}
+          createTick={createTick}
+        />
+      ) : null}
     </div>
   )
 }
@@ -184,13 +264,18 @@ function MachinesTab({
     active: true,
   }
   const [items, setItems] = useState<AdminMachine[]>([])
+  const [types, setTypes] = useState<AdminMachineType[]>([])
   const [form, setForm] = useState(empty)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const response = await fetchAdminMachinesApi()
-    setItems(response.machines ?? [])
+    const [machinesResponse, typesResponse] = await Promise.all([
+      fetchAdminMachinesApi(),
+      fetchAdminMachineTypesApi(),
+    ])
+    setItems(machinesResponse.machines ?? [])
+    setTypes(typesResponse.machineTypes ?? [])
   }
 
   useEffect(() => {
@@ -262,11 +347,35 @@ function MachinesTab({
             value={form.name}
             onChange={(value) => setForm((current) => ({ ...current, name: value }))}
           />
-          <Field
-            label="Type"
-            value={form.machineType}
-            onChange={(value) => setForm((current) => ({ ...current, machineType: value }))}
-          />
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Type</span>
+            {types.length > 0 ? (
+              <select
+                value={form.machineType}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, machineType: event.target.value }))
+                }
+                className={fieldClass}
+                required
+              >
+                <option value="">Select type</option>
+                {types.map((type) => (
+                  <option key={type.id} value={type.name}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={form.machineType}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, machineType: event.target.value }))
+                }
+                className={fieldClass}
+                required
+              />
+            )}
+          </label>
           <Field
             label="Bay"
             value={form.bay}
@@ -939,6 +1048,659 @@ function CustomersTab({
       />
       )}
     </>
+  )
+}
+
+const WEEKDAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+]
+
+function MachineTypesTab({
+  onNotice,
+  showForm,
+  onShowForm,
+  createTick,
+}: MasterTabProps) {
+  const empty = { name: '', status: 'ACTIVE' }
+  const [items, setItems] = useState<AdminMachineType[]>([])
+  const [form, setForm] = useState(empty)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function load() {
+    const response = await fetchAdminMachineTypesApi()
+    setItems(response.machineTypes ?? [])
+  }
+
+  useEffect(() => {
+    void load().catch((loadError: unknown) =>
+      onNotice(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Failed to load machine types.',
+        null,
+      ),
+    )
+  }, [])
+
+  useEffect(() => {
+    if (createTick === 0) return
+    setEditingId(null)
+    setForm(empty)
+  }, [createTick])
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      const payload = { name: form.name.trim(), status: form.status }
+      const response = editingId
+        ? await updateAdminMachineTypeApi(editingId, payload)
+        : await createAdminMachineTypeApi(payload)
+      if (!response.success) {
+        onNotice(response.message || 'Failed to save machine type.', null)
+        return
+      }
+      onNotice(null, response.message)
+      setEditingId(null)
+      setForm(empty)
+      onShowForm(false)
+      await load()
+    } catch (saveError) {
+      onNotice(
+        saveError instanceof Error ? saveError.message : 'Failed to save machine type.',
+        null,
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      {showForm ? (
+      <section className="rounded-2xl border border-border bg-surface-raised p-5">
+        <h3 className="mb-4 text-lg font-bold">
+          {editingId ? 'Update Machine Type' : 'Create Machine Type'}
+        </h3>
+        <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Name"
+            value={form.name}
+            onChange={(value) => setForm((current) => ({ ...current, name: value }))}
+          />
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Status</span>
+            <select
+              value={form.status}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, status: event.target.value }))
+              }
+              className={fieldClass}
+            >
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+          </label>
+          <div className="sm:col-span-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditingId(null)
+                setForm(empty)
+                onShowForm(false)
+              }}
+              className="min-h-12 rounded-xl border border-border px-6 text-sm font-bold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white disabled:opacity-70"
+            >
+              {saving ? 'Saving…' : editingId ? 'Update Machine Type' : 'Create Machine Type'}
+            </button>
+          </div>
+        </form>
+      </section>
+      ) : (
+      <MasterTable
+        columns={['Name', 'Status']}
+        rows={items.map((item) => ({
+          id: item.id,
+          cells: [item.name, item.status === 'ACTIVE' ? 'Active' : 'Inactive'],
+          onEdit: () => {
+            setEditingId(item.id)
+            onShowForm(true)
+            setForm({ name: item.name, status: item.status })
+          },
+          onDelete: () => {
+            if (!window.confirm(`Delete ${item.name}?`)) return
+            void deleteAdminMachineTypeApi(item.id)
+              .then(async (response) => {
+                if (!response.success) {
+                  onNotice(response.message || 'Failed to delete machine type.', null)
+                  return
+                }
+                if (editingId === item.id) {
+                  setEditingId(null)
+                  setForm(empty)
+                }
+                onNotice(null, response.message)
+                await load()
+              })
+              .catch((deleteError: unknown) =>
+                onNotice(
+                  deleteError instanceof Error
+                    ? deleteError.message
+                    : 'Failed to delete machine type.',
+                  null,
+                ),
+              )
+          },
+        }))}
+        empty="No machine types yet."
+      />
+      )}
+    </>
+  )
+}
+
+function toIsoDate(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function addDaysIsoLocal(isoDate: string, days: number) {
+  const date = new Date(`${isoDate}T12:00:00`)
+  date.setDate(date.getDate() + days)
+  return toIsoDate(date)
+}
+
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+const CALENDAR_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function weekdayNameFromDate(value: Date) {
+  return WEEKDAYS[value.getDay() === 0 ? 6 : value.getDay() - 1]
+}
+
+function monthCells(year: number, month: number) {
+  const first = new Date(year, month, 1)
+  const startPad = first.getDay()
+  const days = new Date(year, month + 1, 0).getDate()
+  const cells: Array<{ date: Date; iso: string; inMonth: boolean }> = []
+  for (let index = 0; index < startPad; index += 1) {
+    const date = new Date(year, month, index - startPad + 1)
+    cells.push({ date, iso: toIsoDate(date), inMonth: false })
+  }
+  for (let day = 1; day <= days; day += 1) {
+    const date = new Date(year, month, day)
+    cells.push({ date, iso: toIsoDate(date), inMonth: true })
+  }
+  while (cells.length % 7 !== 0) {
+    const date = new Date(year, month, days + (cells.length - startPad - days) + 1)
+    cells.push({ date, iso: toIsoDate(date), inMonth: false })
+  }
+  return cells
+}
+
+function CalendarsTab({
+  onNotice,
+}: MasterTabProps) {
+  const emptyWorkingDays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ]
+  const todayIso = toIsoDate(new Date())
+  const defaultFrom = addDaysIsoLocal(todayIso, -29)
+  const [items, setItems] = useState<AdminCalendar[]>([])
+  const [cursor, setCursor] = useState(() => {
+    const now = new Date()
+    return { year: now.getFullYear(), month: now.getMonth() }
+  })
+  const [selectedDate, setSelectedDate] = useState(todayIso)
+  const [fromDate, setFromDate] = useState(defaultFrom)
+  const [toDate, setToDate] = useState(todayIso)
+  const [appliedFrom, setAppliedFrom] = useState(defaultFrom)
+  const [appliedTo, setAppliedTo] = useState(todayIso)
+  const [dayStats, setDayStats] = useState<CalendarDayStats | null>(null)
+  const [dayLoading, setDayLoading] = useState(false)
+  const [history, setHistory] = useState<CalendarDayStats[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const plant = items.find((item) => item.status === 'ACTIVE') ?? items[0]
+  const workingDays = plant?.workingDays?.length
+    ? plant.workingDays
+    : emptyWorkingDays
+
+  useEffect(() => {
+    void fetchAdminCalendarsApi()
+      .then((response) => setItems(response.calendars ?? []))
+      .catch((loadError: unknown) =>
+        onNotice(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Failed to load calendars.',
+          null,
+        ),
+      )
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    setHistoryLoading(true)
+    void fetchCalendarHistoryApi(appliedFrom, appliedTo)
+      .then((response) => {
+        if (!active) return
+        setHistory(response.days ?? [])
+      })
+      .catch((loadError: unknown) => {
+        if (!active) return
+        onNotice(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Failed to load day history.',
+          null,
+        )
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [appliedFrom, appliedTo])
+
+  useEffect(() => {
+    let active = true
+    setDayLoading(true)
+    setDayStats(null)
+    void fetchCalendarDayStatsApi(selectedDate)
+      .then((response) => {
+        if (!active) return
+        setDayStats(response.stats ?? null)
+      })
+      .catch((loadError: unknown) => {
+        if (!active) return
+        onNotice(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Failed to load day stats.',
+          null,
+        )
+      })
+      .finally(() => {
+        if (active) setDayLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [selectedDate])
+
+  function jumpToDate(iso: string) {
+    const next = iso > todayIso ? todayIso : iso
+    setSelectedDate(next)
+    const date = new Date(`${next}T12:00:00`)
+    setCursor({ year: date.getFullYear(), month: date.getMonth() })
+  }
+
+  function applyDateFilter() {
+    let from = fromDate || defaultFrom
+    let to = toDate || todayIso
+    if (to > todayIso) to = todayIso
+    if (from > to) {
+      const swap = from
+      from = to
+      to = swap
+    }
+    setFromDate(from)
+    setToDate(to)
+    setAppliedFrom(from)
+    setAppliedTo(to)
+    jumpToDate(to)
+  }
+
+  function resetDateFilter() {
+    setFromDate(defaultFrom)
+    setToDate(todayIso)
+    setAppliedFrom(defaultFrom)
+    setAppliedTo(todayIso)
+    jumpToDate(todayIso)
+  }
+
+  function shiftMonth(delta: number) {
+    setCursor((current) => {
+      const next = new Date(current.year, current.month + delta, 1)
+      return { year: next.getFullYear(), month: next.getMonth() }
+    })
+  }
+
+  const cells = monthCells(cursor.year, cursor.month)
+  const selectedLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString(
+    'en-IN',
+    { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' },
+  )
+
+  return (
+    <>
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <div className="rounded-2xl border border-border bg-surface-raised p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => shiftMonth(-1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border hover:border-accent"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <h3 className="text-lg font-bold">
+              {MONTH_LABELS[cursor.month]} {cursor.year}
+            </h3>
+            <button
+              type="button"
+              onClick={() => shiftMonth(1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border hover:border-accent"
+              aria-label="Next month"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold uppercase tracking-wide text-muted">
+            {CALENDAR_HEADERS.map((label) => (
+              <div key={label} className="py-2">
+                {label}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((cell) => {
+              const selected = cell.iso === selectedDate
+              const isToday = cell.iso === todayIso
+              const inRange = cell.iso >= appliedFrom && cell.iso <= appliedTo
+              const off = !workingDays.includes(weekdayNameFromDate(cell.date))
+              return (
+                <button
+                  key={cell.iso}
+                  type="button"
+                  onClick={() => jumpToDate(cell.iso)}
+                  className={[
+                    'min-h-12 rounded-xl text-sm font-semibold transition',
+                    cell.inMonth ? '' : 'opacity-40',
+                    selected
+                      ? 'bg-accent text-white'
+                      : off
+                        ? 'bg-surface-muted text-muted hover:border-border'
+                        : 'hover:bg-accent-soft hover:text-accent',
+                    isToday && !selected ? 'ring-2 ring-accent/40' : '',
+                    inRange && !selected && cell.inMonth ? 'bg-accent-soft/60' : '',
+                  ].join(' ')}
+                >
+                  {cell.date.getDate()}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            Working days follow {plant?.name ?? 'Plant Calendar'}. Off days are
+            shaded. Click a date to see that day’s activity.
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface-raised p-4">
+          <p className="text-sm font-bold text-accent">
+            {dayStats?.isWorkingDay === false ? 'Weekly off' : 'Selected day'}
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-3">
+            <label className="block min-w-[180px] space-y-1">
+              <span className="text-xs font-bold text-muted">Pick a date</span>
+              <input
+                type="date"
+                value={selectedDate}
+                max={todayIso}
+                onChange={(event) => {
+                  if (event.target.value) jumpToDate(event.target.value)
+                }}
+                className={fieldClass}
+              />
+            </label>
+          </div>
+          <h3 className="mt-3 text-xl font-bold">{selectedLabel}</h3>
+          {dayLoading ? (
+            <p className="mt-4 text-sm text-muted">Loading day activity…</p>
+          ) : dayStats ? (
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <DayStat
+                  label="Machines working"
+                  value={dayStats.machines.working}
+                  hint="Available + busy"
+                />
+                <DayStat
+                  label="Under repair"
+                  value={dayStats.machines.repaired}
+                  hint="Maintenance"
+                />
+                <DayStat
+                  label="Down"
+                  value={dayStats.machines.down}
+                  hint="Stopped"
+                />
+                <DayStat
+                  label="Inactive"
+                  value={dayStats.machines.inactive}
+                  hint={`of ${dayStats.machines.total}`}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <DayStat
+                  label="Orders going on"
+                  value={dayStats.ordersOngoing}
+                  hint="In production / on hold"
+                />
+                <DayStat
+                  label="Orders created"
+                  value={dayStats.ordersCreated}
+                  hint="Raised this day"
+                />
+                <DayStat
+                  label="Employees working"
+                  value={dayStats.employeesWorking}
+                  hint={`${dayStats.hoursLogged} hrs logged`}
+                />
+                <DayStat
+                  label="On leave / absent"
+                  value={dayStats.employeesOnLeave}
+                  hint={
+                    dayStats.isWorkingDay
+                      ? `${dayStats.employeesTotal} active staff`
+                      : 'Weekly off'
+                  }
+                />
+                <DayStat
+                  label="Products produced"
+                  value={dayStats.productsProduced}
+                  hint="Completed pieces on batches worked"
+                />
+                <DayStat
+                  label="Batches worked"
+                  value={dayStats.batchesWorked}
+                  hint="With logs or assignments"
+                />
+              </div>
+              {dayStats.workingNames.length > 0 ? (
+                <p className="text-sm text-muted">
+                  <span className="font-bold text-foreground">Working: </span>
+                  {dayStats.workingNames.map((person) => person.name).join(', ')}
+                </p>
+              ) : null}
+              {dayStats.leaveNames.length > 0 ? (
+                <p className="text-sm text-muted">
+                  <span className="font-bold text-foreground">Leave / absent: </span>
+                  {dayStats.leaveNames.map((person) => person.name).join(', ')}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted">No activity loaded.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-base font-bold">Past days</h3>
+          <p className="text-sm text-muted">
+            Choose a from and to date, then show results for that range.
+            {historyLoading
+              ? ''
+              : ` Showing ${history.length} day${history.length === 1 ? '' : 's'}.`}
+          </p>
+          <form
+            className="mt-3 flex flex-wrap items-end gap-3"
+            onSubmit={(event) => {
+              event.preventDefault()
+              applyDateFilter()
+            }}
+          >
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-muted">From</span>
+              <input
+                type="date"
+                value={fromDate}
+                max={todayIso}
+                onChange={(event) => setFromDate(event.target.value)}
+                className={fieldClass}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-muted">To</span>
+              <input
+                type="date"
+                value={toDate}
+                max={todayIso}
+                onChange={(event) => setToDate(event.target.value)}
+                className={fieldClass}
+              />
+            </label>
+            <button
+              type="submit"
+              className="inline-flex min-h-12 items-center rounded-xl bg-accent px-5 text-sm font-bold text-white hover:brightness-110"
+            >
+              Show results
+            </button>
+            <button
+              type="button"
+              onClick={resetDateFilter}
+              className="inline-flex min-h-12 items-center rounded-xl border border-border px-5 text-sm font-bold"
+            >
+              Reset
+            </button>
+          </form>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Day</th>
+                <th className="px-4 py-3">Machines working</th>
+                <th className="px-4 py-3">Repair</th>
+                <th className="px-4 py-3">Orders going on</th>
+                <th className="px-4 py-3">Orders created</th>
+                <th className="px-4 py-3">Employees working</th>
+                <th className="px-4 py-3">On leave</th>
+                <th className="px-4 py-3">Products produced</th>
+                <th className="px-4 py-3">Hours</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyLoading ? (
+                <tr>
+                  <td colSpan={10} className="px-4 py-8 text-center text-muted">
+                    Loading past days…
+                  </td>
+                </tr>
+              ) : history.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-4 py-8 text-center text-muted">
+                    No days in this date range.
+                  </td>
+                </tr>
+              ) : (
+                history.map((row) => (
+                  <tr
+                    key={row.date}
+                    className={`cursor-pointer border-t border-border ${
+                      row.date === selectedDate ? 'bg-accent-soft' : ''
+                    }`}
+                    onClick={() => jumpToDate(row.date)}
+                  >
+                    <td className="px-4 py-3 font-semibold">{row.date}</td>
+                    <td className="px-4 py-3">
+                      {row.weekday.slice(0, 3)}
+                      {row.isWorkingDay ? '' : ' · Off'}
+                    </td>
+                    <td className="px-4 py-3">{row.machines.working}</td>
+                    <td className="px-4 py-3">{row.machines.repaired}</td>
+                    <td className="px-4 py-3">{row.ordersOngoing}</td>
+                    <td className="px-4 py-3">{row.ordersCreated}</td>
+                    <td className="px-4 py-3">{row.employeesWorking}</td>
+                    <td className="px-4 py-3">{row.employeesOnLeave}</td>
+                    <td className="px-4 py-3">{row.productsProduced}</td>
+                    <td className="px-4 py-3">{row.hoursLogged}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )
+}
+function DayStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: number
+  hint: string
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-muted px-3 py-3">
+      <p className="text-xs font-bold text-muted">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-foreground">{value}</p>
+      <p className="mt-0.5 text-xs text-muted">{hint}</p>
+    </div>
   )
 }
 
