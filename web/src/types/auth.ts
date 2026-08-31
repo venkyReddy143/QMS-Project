@@ -77,7 +77,10 @@ const ROLE_ACCESS: Record<
     accessPaths: [
       '/dashboard',
       '/admin',
+      '/order',
       '/orders',
+      '/production',
+      '/masters',
       '/create-order',
       '/production-planning',
       '/my-tasks',

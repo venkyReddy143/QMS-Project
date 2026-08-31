@@ -89,6 +89,63 @@ export interface AdminCustomer {
   status: string
 }
 
+export interface AdminMachineType {
+  id: string
+  name: string
+  status: string
+}
+
+export interface AdminCalendar {
+  id: string
+  name: string
+  workingDays: string[]
+  status: string
+}
+
+export interface CalendarDayPerson {
+  id: string
+  name: string
+  employeeCode: string
+}
+
+export interface CalendarDayStats {
+  date: string
+  weekday: string
+  isWorkingDay: boolean
+  calendarName: string
+  machines: {
+    working: number
+    repaired: number
+    down: number
+    inactive: number
+    total: number
+  }
+  ordersOngoing: number
+  ordersCreated: number
+  productsProduced: number
+  hoursLogged: number
+  batchesWorked: number
+  employeesWorking: number
+  employeesOnLeave: number
+  employeesTotal: number
+  workingNames: CalendarDayPerson[]
+  leaveNames: CalendarDayPerson[]
+}
+
+export interface CalendarDayStatsResponse {
+  success: boolean
+  message?: string
+  stats: CalendarDayStats
+}
+
+export interface CalendarHistoryResponse {
+  success: boolean
+  message?: string
+  from: string
+  to: string
+  days: CalendarDayStats[]
+}
+
 export interface AdminMachinesResponse {
   success: boolean
   message?: string
@@ -111,6 +168,18 @@ export interface AdminCustomersResponse {
   success: boolean
   message?: string
   customers: AdminCustomer[]
+}
+
+export interface AdminMachineTypesResponse {
+  success: boolean
+  message?: string
+  machineTypes: AdminMachineType[]
+}
+
+export interface AdminCalendarsResponse {
+  success: boolean
+  message?: string
+  calendars: AdminCalendar[]
 }
 
 export const ASSIGNABLE_ROLES: Array<{ value: ApiUserRole; label: string }> = [

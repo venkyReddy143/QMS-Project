@@ -59,33 +59,33 @@ export function SuperAdminDashboard() {
       ) : null}
 
       <section className="grid grid-cols-6 gap-3">
-        <StatCard label="Users" value={summary.users} to="/admin/users" />
-        <StatCard label="Machines" value={summary.machines} to="/admin/masters" />
-        <StatCard label="Products" value={summary.products} to="/admin/masters" />
+        <StatCard label="Users" value={summary.users} to="/masters/workers" />
+        <StatCard label="Machines" value={summary.machines} to="/masters/machines" />
+        <StatCard label="Products" value={summary.products} to="/masters/products" />
         <StatCard
           label="Process Steps"
           value={summary.processSteps}
-          to="/admin/masters"
+          to="/masters/process-steps"
         />
-        <StatCard label="Customers" value={summary.customers} to="/admin/masters" />
-        <StatCard label="Orders" value={summary.orders} to="/orders" />
+        <StatCard label="Customers" value={summary.customers} to="/masters/customers" />
+        <StatCard label="Orders" value={summary.orders} to="/order/orders/all" />
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2">
         <QuickLink
-          to="/admin/users"
+          to="/masters/workers"
           icon={Users}
-          title="Users & Roles"
-          description="Create users and assign Order Creator, Production Manager, Floor Manager, or Super Admin."
+          title="Workers"
+          description="Create workers and assign Order Creator, Production Manager, Floor Manager, or Super Admin."
         />
         <QuickLink
-          to="/admin/masters"
+          to="/masters/machines"
           icon={Cog}
           title="Masters"
-          description="Create, update, or delete machines, products, process steps, and customers."
+          description="Manage products, machine types, machines, calendars, and workers."
         />
         <QuickLink
-          to="/orders"
+          to="/order/orders/all"
           icon={ClipboardList}
           title="Orders"
           description="Open any order to review planning, batches, and serial numbers."

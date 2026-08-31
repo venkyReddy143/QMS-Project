@@ -7,6 +7,17 @@ import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { fetchOrders } from '../store/slices/ordersSlice'
 import type { OrderProductLine } from '../types/orders'
 
+const ACTIVE_ORDER_STATUSES = new Set([
+  'DRAFT',
+  'RELEASED',
+  'IN_PRODUCTION',
+  'PARTIALLY_COMPLETED',
+  'ON_HOLD',
+])
+
+export type OrderListScope = 'mine' | 'all'
+export type OrderListView = 'active' | 'all'
+
 function statusLabel(status: string): string {
   switch (status) {
     case 'DRAFT':
@@ -50,7 +61,13 @@ function productSummary(products: OrderProductLine[] | undefined, fallback: stri
     .join(', ')
 }
 
-export function OrdersList() {
+export function OrdersList({
+  scope,
+  view,
+}: {
+  scope?: OrderListScope
+  view?: OrderListView
+} = {}) {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -63,27 +80,58 @@ export function OrdersList() {
     void dispatch(fetchOrders())
   }, [dispatch])
 
+  const visibleOrders = useMemo(() => {
+    let next = orders
+    if (scope === 'mine' && user?.id) {
+      next = next.filter((order) => order.createdBy === user.id)
+    }
+    if (view === 'active') {
+      next = next.filter((order) => ACTIVE_ORDER_STATUSES.has(order.status))
+    }
+    return next
+  }, [orders, scope, view, user?.id])
+
+  const heading =
+    scope === 'mine' && view === 'active'
+      ? 'My Active Orders'
+      : scope === 'mine'
+        ? 'My Orders'
+        : view === 'active'
+          ? 'Active Orders'
+          : scope === 'all'
+            ? 'All Orders'
+            : 'Orders'
+
+  const subtitle =
+    scope === 'mine'
+      ? view === 'active'
+        ? 'Orders you created that are still open.'
+        : 'All orders you created.'
+      : view === 'active'
+        ? 'Open orders across the plant.'
+        : canCreate
+          ? 'Review existing orders or create a new manufacturing order.'
+          : 'Open an order to add customer, machine, and process steps.'
+
   const stats = useMemo(() => {
     return {
-      open: orders.filter((order) => order.status !== 'CANCELLED').length,
-      inProduction: orders.filter(
+      open: visibleOrders.filter((order) => order.status !== 'CANCELLED').length,
+      inProduction: visibleOrders.filter(
         (order) =>
           order.status === 'IN_PRODUCTION' ||
           order.status === 'PARTIALLY_COMPLETED',
       ).length,
-      ready: orders.filter((order) => order.status === 'COMPLETED').length,
+      ready: visibleOrders.filter((order) => order.status === 'COMPLETED').length,
     }
-  }, [orders])
+  }, [visibleOrders])
 
   return (
     <div className="space-y-4">
       <section className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-surface-raised p-5">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Orders</h2>
+          <h2 className="text-2xl font-bold text-foreground">{heading}</h2>
           <p className="mt-1 text-base text-muted">
-            {canCreate
-              ? 'Review existing orders or create a new manufacturing order.'
-              : 'Open an order to add customer, machine, and process steps.'}
+            {subtitle}
           </p>
         </div>
         {canCreate ? (
@@ -137,14 +185,14 @@ export function OrdersList() {
                     Loading orders…
                   </td>
                 </tr>
-              ) : orders.length === 0 ? (
+              ) : visibleOrders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     No orders found.
                   </td>
                 </tr>
               ) : (
-                orders.map((order) => (
+                visibleOrders.map((order) => (
                   <tr key={order.id} className="border-t border-border">
                     <td className="px-4 py-3 font-bold text-accent">
                       {order.orderNo}

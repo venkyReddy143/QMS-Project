@@ -1,8 +1,10 @@
 import './config/env'
 import mongoose from 'mongoose'
 import { connectDB } from './config/db'
+import { Calendar } from './models/Calendar'
 import { Customer } from './models/Customer'
 import { Machine } from './models/Machine'
+import { MachineType } from './models/MachineType'
 import { ProcessRoute } from './models/ProcessRoute'
 import { ProcessStep } from './models/ProcessStep'
 import { Product } from './models/Product'
@@ -339,6 +341,38 @@ async function upsertMachines() {
   console.log(`Upserted ${MACHINES.length} machines`)
 }
 
+async function upsertMachineTypes() {
+  const names = [...new Set(MACHINES.map((machine) => machine.machineType))]
+  for (const name of names) {
+    await MachineType.findOneAndUpdate(
+      { name },
+      { name, status: 'ACTIVE' },
+      { upsert: true, new: true },
+    )
+  }
+  console.log(`Upserted ${names.length} machine types`)
+}
+
+async function upsertCalendars() {
+  await Calendar.findOneAndUpdate(
+    { name: 'Plant Calendar' },
+    {
+      name: 'Plant Calendar',
+      workingDays: [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+      ],
+      status: 'ACTIVE',
+    },
+    { upsert: true, new: true },
+  )
+  console.log('Upserted plant calendar')
+}
+
 async function seed() {
   await connectDB()
   await upsertUsers()
@@ -346,6 +380,8 @@ async function seed() {
   await upsertProcessSteps()
   await upsertProductsAndRoutes()
   await upsertMachines()
+  await upsertMachineTypes()
+  await upsertCalendars()
   await mongoose.disconnect()
   console.log('Seed complete.')
 }

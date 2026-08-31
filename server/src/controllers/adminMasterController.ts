@@ -11,6 +11,9 @@ import {
 } from '../constants/enums'
 import { Customer } from '../models/Customer'
 import { Machine } from '../models/Machine'
+import { MachineType } from '../models/MachineType'
+import { Calendar } from '../models/Calendar'
+import { DeliveryBatch } from '../models/DeliveryBatch'
 import { ProcessStep } from '../models/ProcessStep'
 import { Product } from '../models/Product'
 import { ProductionOrder } from '../models/ProductionOrder'
@@ -736,6 +739,587 @@ export async function deleteCustomer(
     }
     await customer.deleteOne()
     res.json({ success: true, message: 'Customer deleted.' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+function serializeNamedMaster(item: {
+  _id: { toString(): string }
+  name: string
+  status: string
+  workingDays?: string[]
+}) {
+  return {
+    id: item._id.toString(),
+    name: item.name,
+    status: item.status,
+    workingDays: item.workingDays ?? [],
+  }
+}
+
+export async function listAdminMachineTypes(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    let machineTypes = await MachineType.find().sort({ name: 1 })
+    if (machineTypes.length === 0) {
+      const names = await Machine.distinct('machineType')
+      if (names.length > 0) {
+        await MachineType.insertMany(
+          names
+            .map((name) => String(name).trim())
+            .filter(Boolean)
+            .map((name) => ({ name, status: 'ACTIVE' as const })),
+        )
+        machineTypes = await MachineType.find().sort({ name: 1 })
+      }
+    }
+    res.json({
+      success: true,
+      machineTypes: machineTypes.map(serializeNamedMaster),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function createMachineType(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const name = String(req.body.name ?? '').trim()
+    if (!name) {
+      res.status(400).json({
+        success: false,
+        message: 'Machine type name is required.',
+      })
+      return
+    }
+    const status = mapMasterStatus(req.body.status) ?? 'ACTIVE'
+    const machineType = await MachineType.create({ name, status })
+    res.status(201).json({
+      success: true,
+      message: 'Machine type created.',
+      machineType: serializeNamedMaster(machineType),
+    })
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      res.status(409).json({
+        success: false,
+        message: duplicateMessage('Machine type'),
+      })
+      return
+    }
+    next(error)
+  }
+}
+
+export async function updateMachineType(
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const machineType = await MachineType.findById(req.params.id)
+    if (!machineType) {
+      res.status(404).json({ success: false, message: 'Machine type not found.' })
+      return
+    }
+    if (req.body.name !== undefined) machineType.name = String(req.body.name).trim()
+    if (req.body.status !== undefined) {
+      const status = mapMasterStatus(req.body.status)
+      if (!status) {
+        res.status(400).json({ success: false, message: 'Invalid status.' })
+        return
+      }
+      machineType.status = status
+    }
+    await machineType.save()
+    res.json({
+      success: true,
+      message: 'Machine type updated.',
+      machineType: serializeNamedMaster(machineType),
+    })
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      res.status(409).json({
+        success: false,
+        message: duplicateMessage('Machine type'),
+      })
+      return
+    }
+    next(error)
+  }
+}
+
+export async function deleteMachineType(
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const machineType = await MachineType.findById(req.params.id)
+    if (!machineType) {
+      res.status(404).json({ success: false, message: 'Machine type not found.' })
+      return
+    }
+    await machineType.deleteOne()
+    res.json({ success: true, message: 'Machine type deleted.' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+const WEEKDAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+] as const
+
+function mapWorkingDays(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const days = value
+    .map((day) => String(day).trim())
+    .filter((day) => WEEKDAYS.includes(day as (typeof WEEKDAYS)[number]))
+  return days
+}
+
+export async function listAdminCalendars(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    let calendars = await Calendar.find().sort({ name: 1 })
+    if (calendars.length === 0) {
+      await Calendar.create({
+        name: 'Plant Calendar',
+        workingDays: [
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+          'Thursday',
+          'Friday',
+          'Saturday',
+        ],
+        status: 'ACTIVE',
+      })
+      calendars = await Calendar.find().sort({ name: 1 })
+    }
+    res.json({
+      success: true,
+      calendars: calendars.map(serializeNamedMaster),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function createCalendar(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const name = String(req.body.name ?? '').trim()
+    if (!name) {
+      res.status(400).json({
+        success: false,
+        message: 'Calendar name is required.',
+      })
+      return
+    }
+    const workingDays =
+      mapWorkingDays(req.body.workingDays) ?? [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+      ]
+    const status = mapMasterStatus(req.body.status) ?? 'ACTIVE'
+    const calendar = await Calendar.create({ name, workingDays, status })
+    res.status(201).json({
+      success: true,
+      message: 'Calendar created.',
+      calendar: serializeNamedMaster(calendar),
+    })
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      res.status(409).json({
+        success: false,
+        message: duplicateMessage('Calendar name'),
+      })
+      return
+    }
+    next(error)
+  }
+}
+
+export async function updateCalendar(
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const calendar = await Calendar.findById(req.params.id)
+    if (!calendar) {
+      res.status(404).json({ success: false, message: 'Calendar not found.' })
+      return
+    }
+    if (req.body.name !== undefined) calendar.name = String(req.body.name).trim()
+    if (req.body.workingDays !== undefined) {
+      const workingDays = mapWorkingDays(req.body.workingDays)
+      if (!workingDays || workingDays.length === 0) {
+        res.status(400).json({
+          success: false,
+          message: 'Select at least one working day.',
+        })
+        return
+      }
+      calendar.workingDays = workingDays as typeof calendar.workingDays
+    }
+    if (req.body.status !== undefined) {
+      const status = mapMasterStatus(req.body.status)
+      if (!status) {
+        res.status(400).json({ success: false, message: 'Invalid status.' })
+        return
+      }
+      calendar.status = status
+    }
+    await calendar.save()
+    res.json({
+      success: true,
+      message: 'Calendar updated.',
+      calendar: serializeNamedMaster(calendar),
+    })
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      res.status(409).json({
+        success: false,
+        message: duplicateMessage('Calendar name'),
+      })
+      return
+    }
+    next(error)
+  }
+}
+
+export async function deleteCalendar(
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const calendar = await Calendar.findById(req.params.id)
+    if (!calendar) {
+      res.status(404).json({ success: false, message: 'Calendar not found.' })
+      return
+    }
+    await calendar.deleteOne()
+    res.json({ success: true, message: 'Calendar deleted.' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+function weekdayFromIsoDate(isoDate: string): string {
+  const noon = new Date(`${isoDate}T12:00:00+05:30`)
+  const jsDay = noon.getDay()
+  return WEEKDAYS[jsDay === 0 ? 6 : jsDay - 1]
+}
+
+function dayBoundsIst(isoDate: string) {
+  return {
+    start: new Date(`${isoDate}T00:00:00+05:30`),
+    end: new Date(`${isoDate}T23:59:59.999+05:30`),
+  }
+}
+
+function todayIsoIst() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(
+    new Date(),
+  )
+}
+
+function isoFromDateIst(value: Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(
+    value,
+  )
+}
+
+function addDaysIso(isoDate: string, days: number) {
+  const next = new Date(`${isoDate}T12:00:00+05:30`)
+  next.setDate(next.getDate() + days)
+  return isoFromDateIst(next)
+}
+
+function isoDatesInclusive(from: string, to: string) {
+  const dates: string[] = []
+  let current = from
+  while (current <= to) {
+    dates.push(current)
+    current = addDaysIso(current, 1)
+  }
+  return dates
+}
+
+const OPEN_ORDER_STATUSES = [
+  'RELEASED',
+  'IN_PRODUCTION',
+  'PARTIALLY_COMPLETED',
+  'ON_HOLD',
+]
+
+type LeanUser = { _id: { toString(): string }; name: string; employeeCode: string }
+type LeanMachine = { status: string }
+type LeanOrder = { createdAt?: Date; status: string }
+type LeanBatch = {
+  timeLogs?: Array<{ employeeId?: unknown; hours?: number; loggedAt?: Date }>
+  assignments?: Array<{ employeeId?: unknown; assignedAt?: Date }>
+  serials?: Array<{ status: string }>
+}
+
+function buildDayStats(input: {
+  date: string
+  calendarName: string
+  workingDays: string[]
+  machines: LeanMachine[]
+  orders: LeanOrder[]
+  activeUsers: LeanUser[]
+  batches: LeanBatch[]
+  includeNames: boolean
+}) {
+  const weekday = weekdayFromIsoDate(input.date)
+  const { start, end } = dayBoundsIst(input.date)
+  const isWorkingDay = input.workingDays.includes(weekday)
+
+  const machineWorking = input.machines.filter(
+    (machine) => machine.status === 'AVAILABLE' || machine.status === 'BUSY',
+  ).length
+  const machineRepaired = input.machines.filter(
+    (machine) => machine.status === 'MAINTENANCE',
+  ).length
+  const machineDown = input.machines.filter(
+    (machine) => machine.status === 'DOWN',
+  ).length
+  const machineInactive = input.machines.filter(
+    (machine) => machine.status === 'INACTIVE',
+  ).length
+
+  const ordersCreated = input.orders.filter((order) => {
+    if (!order.createdAt) return false
+    return order.createdAt >= start && order.createdAt <= end
+  }).length
+
+  const ordersOngoing = input.orders.filter((order) => {
+    if (!order.createdAt || order.createdAt > end) return false
+    return OPEN_ORDER_STATUSES.includes(order.status)
+  }).length
+
+  const workingIds = new Set<string>()
+  let hoursLogged = 0
+  let productsProduced = 0
+  let batchesWorked = 0
+
+  for (const batch of input.batches) {
+    let worked = false
+    for (const log of batch.timeLogs ?? []) {
+      const loggedAt = log.loggedAt ? new Date(log.loggedAt) : null
+      if (!loggedAt || loggedAt < start || loggedAt > end) continue
+      worked = true
+      hoursLogged += log.hours ?? 0
+      workingIds.add(String(log.employeeId))
+    }
+    for (const assignment of batch.assignments ?? []) {
+      const assignedAt = assignment.assignedAt
+        ? new Date(assignment.assignedAt)
+        : null
+      if (!assignedAt || assignedAt < start || assignedAt > end) continue
+      worked = true
+      workingIds.add(String(assignment.employeeId))
+    }
+    if (!worked) continue
+    batchesWorked += 1
+    productsProduced += (batch.serials ?? []).filter(
+      (serial) => serial.status === 'COMPLETED',
+    ).length
+  }
+
+  const workingEmployees = input.activeUsers.filter((user) =>
+    workingIds.has(String(user._id)),
+  )
+  const leaveEmployees = isWorkingDay
+    ? input.activeUsers.filter((user) => !workingIds.has(String(user._id)))
+    : []
+
+  const toPerson = (user: LeanUser) => ({
+    id: String(user._id),
+    name: user.name,
+    employeeCode: user.employeeCode,
+  })
+
+  return {
+    date: input.date,
+    weekday,
+    isWorkingDay,
+    calendarName: input.calendarName,
+    machines: {
+      working: machineWorking,
+      repaired: machineRepaired,
+      down: machineDown,
+      inactive: machineInactive,
+      total: input.machines.length,
+    },
+    ordersOngoing,
+    ordersCreated,
+    productsProduced,
+    hoursLogged: Math.round(hoursLogged * 10) / 10,
+    batchesWorked,
+    employeesWorking: workingEmployees.length,
+    employeesOnLeave: leaveEmployees.length,
+    employeesTotal: input.activeUsers.length,
+    workingNames: input.includeNames ? workingEmployees.slice(0, 12).map(toPerson) : [],
+    leaveNames: input.includeNames ? leaveEmployees.slice(0, 12).map(toPerson) : [],
+  }
+}
+
+async function loadCalendarContext() {
+  const [machines, orders, activeUsers, batches, plantCalendar] =
+    await Promise.all([
+      Machine.find().select('status').lean(),
+      ProductionOrder.find().select('createdAt status').lean<LeanOrder[]>(),
+      User.find({
+        status: 'ACTIVE',
+        role: { $ne: 'SUPER_ADMIN' },
+      })
+        .select('name employeeCode')
+        .lean(),
+      DeliveryBatch.find().select('timeLogs assignments serials').lean(),
+      Calendar.findOne({ status: 'ACTIVE' }).sort({ name: 1 }),
+    ])
+
+  const workingDays = plantCalendar?.workingDays ?? [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ]
+
+  return {
+    machines,
+    orders,
+    activeUsers,
+    batches,
+    workingDays,
+    calendarName: plantCalendar?.name ?? 'Plant Calendar',
+  }
+}
+
+export async function getCalendarDayStats(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const date = String(req.query.date ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({
+        success: false,
+        message: 'Provide date as YYYY-MM-DD.',
+      })
+      return
+    }
+
+    const context = await loadCalendarContext()
+    res.json({
+      success: true,
+      stats: buildDayStats({
+        date,
+        ...context,
+        includeNames: true,
+      }),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function getCalendarHistory(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const today = todayIsoIst()
+    const fromParam = String(req.query.from ?? '').trim()
+    const toParam = String(req.query.to ?? '').trim()
+    const validFrom = /^\d{4}-\d{2}-\d{2}$/.test(fromParam)
+    const validTo = /^\d{4}-\d{2}-\d{2}$/.test(toParam)
+
+    let to = validTo ? toParam : today
+    if (to > today) to = today
+
+    const [firstOrder, firstBatch] = await Promise.all([
+      ProductionOrder.findOne()
+        .sort({ createdAt: 1 })
+        .select('createdAt')
+        .lean<{ createdAt?: Date } | null>(),
+      DeliveryBatch.findOne()
+        .sort({ createdAt: 1 })
+        .select('createdAt')
+        .lean<{ createdAt?: Date } | null>(),
+    ])
+
+    const earliest = [firstOrder?.createdAt, firstBatch?.createdAt]
+      .filter((value): value is Date => Boolean(value))
+      .map(isoFromDateIst)
+      .sort()[0]
+
+    const floor = addDaysIso(today, -364)
+    const thirtyDays = addDaysIso(today, -29)
+    let from = validFrom
+      ? fromParam
+      : earliest && earliest < thirtyDays
+        ? earliest
+        : thirtyDays
+    if (!validFrom && from < floor) from = floor
+    if (from > to) from = to
+
+    const span = isoDatesInclusive(from, to)
+    if (span.length > 366) {
+      from = addDaysIso(to, -365)
+    }
+
+    const context = await loadCalendarContext()
+    const days = isoDatesInclusive(from, to)
+      .reverse()
+      .map((date) =>
+        buildDayStats({
+          date,
+          ...context,
+          includeNames: false,
+        }),
+      )
+
+    res.json({
+      success: true,
+      from,
+      to,
+      days,
+    })
   } catch (error) {
     next(error)
   }

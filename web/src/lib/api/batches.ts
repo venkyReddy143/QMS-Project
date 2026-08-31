@@ -7,6 +7,10 @@ import type {
 } from '../../types/orders'
 import { get, post } from './http'
 
+export function fetchAllBatchesApi() {
+  return get<ListBatchesResponse>('/batches/listBatches')
+}
+
 export function fetchBatchesApi(orderId: string) {
   return get<ListBatchesResponse>(`/orders/${orderId}/batches`)
 }
