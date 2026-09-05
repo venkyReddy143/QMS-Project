@@ -48,6 +48,7 @@ export function buildBatchSerials(params: {
   batchNo: string
   quantity: number
   startSequence?: number
+  currentProcessStepName?: string
 }) {
   const start = params.startSequence ?? 1
   const batchNumber = parseBatchNumber(params.batchNo)
@@ -62,6 +63,7 @@ export function buildBatchSerials(params: {
       }),
       sequence,
       status: 'QUEUED' as const,
+      currentProcessStepName: params.currentProcessStepName ?? '',
     }
   })
 }

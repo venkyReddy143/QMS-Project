@@ -11,6 +11,8 @@ export interface IMachine {
   name: string
   machineType: string
   bay?: string
+  location?: string
+  operatorSkills?: string
   maxHoursPerShift: number
   status: MachineStatus
   maintenanceStatus?: MachineHealthStatus
@@ -39,6 +41,16 @@ const machineSchema = new Schema<IMachine>(
     bay: {
       type: String,
       trim: true,
+    },
+    location: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    operatorSkills: {
+      type: String,
+      trim: true,
+      default: '',
     },
     maxHoursPerShift: {
       type: Number,

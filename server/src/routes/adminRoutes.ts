@@ -34,6 +34,7 @@ import {
   listUsers,
   updateUser,
 } from '../controllers/adminUserController'
+import { createStockEntry, listInventory } from '../controllers/inventoryController'
 import { requireAuth, requireSuperAdmin } from '../middleware/auth'
 
 export const adminRoutes = Router()
@@ -56,6 +57,9 @@ adminRoutes.get('/products', listAdminProducts)
 adminRoutes.post('/products', createProduct)
 adminRoutes.patch('/products/:id', updateProduct)
 adminRoutes.delete('/products/:id', deleteProduct)
+
+adminRoutes.get('/inventory', listInventory)
+adminRoutes.post('/inventory/entries', createStockEntry)
 
 adminRoutes.get('/process-steps', listAdminProcessSteps)
 adminRoutes.post('/process-steps', createProcessStep)

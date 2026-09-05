@@ -5,6 +5,9 @@ import type {
   AdminCalendarsResponse,
   CalendarDayStatsResponse,
   CalendarHistoryResponse,
+  InventoryResponse,
+  StockEntryPayload,
+  StockEntryResponse,
   AdminMachine,
   AdminMachineType,
   AdminMachineTypesResponse,
@@ -201,4 +204,15 @@ export function updateAdminCalendarApi(id: string, payload: Partial<AdminCalenda
 
 export function deleteAdminCalendarApi(id: string) {
   return del<{ success: boolean; message: string }>(`/admin/calendars/${id}`)
+}
+
+export function fetchInventoryApi() {
+  return get<InventoryResponse>('/admin/inventory')
+}
+
+export function createStockEntryApi(payload: StockEntryPayload) {
+  return post<StockEntryResponse, StockEntryPayload>(
+    '/admin/inventory/entries',
+    payload,
+  )
 }

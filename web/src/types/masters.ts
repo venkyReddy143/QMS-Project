@@ -48,6 +48,8 @@ export interface MachineOption {
   name: string
   machineType: string
   bay: string
+  location?: string
+  operatorSkills?: string
   maxHoursPerShift: number
   status: string
   maintenanceStatus: string

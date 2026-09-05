@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronDown, ChevronRight, PlusCircle } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 import { createBatchApi, fetchBatchesApi } from '../lib/api/batches'
 import type {
   OrderPriorityApi,
@@ -65,6 +67,14 @@ function serialRange(batch: ProductionBatch): string {
   return `${first} → ${last}`
 }
 
+function machineNames(batch: ProductionBatch): string {
+  const machines = batch.assignedMachines ?? []
+  if (machines.length === 0) return '—'
+  return machines
+    .map((machine) => machine.machineCode || machine.machineName)
+    .join(', ')
+}
+
 export function OrderBatches({
   order,
   canEdit,
@@ -72,6 +82,9 @@ export function OrderBatches({
   order: ProductionOrder
   canEdit: boolean
 }) {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const isSuperAdmin = user?.role === 'Super Admin'
   const products = order.products ?? []
   const [batches, setBatches] = useState<ProductionBatch[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -186,7 +199,19 @@ export function OrderBatches({
 
   return (
     <div className="space-y-4">
-      {canEdit ? (
+      {canEdit && isSuperAdmin ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => navigate(`/orders/${order.id}/create-batch`)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-bold text-white hover:brightness-110"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Create Batch
+          </button>
+        </div>
+      ) : null}
+      {canEdit && !isSuperAdmin ? (
         <section className="rounded-2xl border border-border bg-surface-raised p-5">
           <h3 className="mb-1 text-lg font-bold">Create Batch</h3>
           <p className="mb-4 text-sm text-muted">
@@ -307,6 +332,7 @@ export function OrderBatches({
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">Process Step</th>
                 <th className="px-4 py-3">Qty</th>
+                {isSuperAdmin ? <th className="px-4 py-3">Machines</th> : null}
                 <th className="px-4 py-3">Serials</th>
                 <th className="px-4 py-3">Dispatch Date</th>
                 <th className="px-4 py-3">Priority</th>
@@ -315,7 +341,7 @@ export function OrderBatches({
             <tbody>
               {batches.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={isSuperAdmin ? 9 : 8} className="px-4 py-8 text-center text-muted">
                     No batches yet.
                   </td>
                 </tr>
@@ -369,6 +395,9 @@ export function OrderBatches({
                           {batch.processStepName || 'Whole product'}
                         </td>
                         <td className="px-4 py-3">{batch.plannedQuantity}</td>
+                        {isSuperAdmin ? (
+                          <td className="px-4 py-3">{machineNames(batch)}</td>
+                        ) : null}
                         <td className="px-4 py-3">
                           {serials.length === 0 ? (
                             '—'
@@ -386,9 +415,27 @@ export function OrderBatches({
                         </td>
                         <td className="px-4 py-3">{priorityLabel(batch.priority)}</td>
                       </tr>
+                      {isSuperAdmin ? (
+                        <tr className="border-t border-border bg-surface-muted/30">
+                          <td colSpan={9} className="px-4 py-3 text-sm">
+                            <p className="font-bold">
+                              {batch.batchNo} — {batch.processQtys?.total ?? batch.plannedQuantity} qty
+                            </p>
+                            <p className="mt-1 text-muted">
+                              Not started:{' '}
+                              {batch.processQtys?.notStarted ?? batch.plannedQuantity} qty
+                            </p>
+                            {(batch.processQtys?.steps ?? []).map((step) => (
+                              <p key={step.name} className="text-muted">
+                                {step.name}: {step.inProgress} in progress, {step.queue} queue
+                              </p>
+                            ))}
+                          </td>
+                        </tr>
+                      ) : null}
                       {expanded ? (
                         <tr className="border-t border-border bg-surface-muted/50">
-                          <td colSpan={8} className="px-4 py-3">
+                          <td colSpan={isSuperAdmin ? 9 : 8} className="px-4 py-3">
                             <div className="max-h-72 overflow-auto rounded-xl border border-border bg-surface-raised">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">

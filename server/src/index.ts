@@ -17,6 +17,17 @@ import { orderRoutes } from './routes/orderRoutes'
 const app = express()
 const PORT = Number(process.env.PORT) || 5000
 
+const configuredOrigins = String(process.env.CLIENT_ORIGIN ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true
+  if (configuredOrigins.includes(origin)) return true
+  return /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)
+}
+
 // Frontend build location
 // Backend: QMS/server
 // Frontend: QMS/web/dist
@@ -24,7 +35,13 @@ const frontendPath = path.resolve(process.cwd(), '../web/dist')
 
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true)
+        return
+      }
+      callback(new Error(`Origin ${origin} is not allowed by CORS`))
+    },
     credentials: true,
   }),
 )

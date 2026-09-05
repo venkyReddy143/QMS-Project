@@ -55,6 +55,8 @@ export interface AdminMachine {
   name: string
   machineType: string
   bay: string
+  location: string
+  operatorSkills: string
   maxHoursPerShift: number
   status: string
   maintenanceStatus: string
@@ -69,6 +71,7 @@ export interface AdminProduct {
   uom: string
   revision: string
   productType: string
+  isSerialControl: boolean
   unitRate: number
   status: string
 }
@@ -187,4 +190,63 @@ export const ASSIGNABLE_ROLES: Array<{ value: ApiUserRole; label: string }> = [
   { value: 'SUPERVISOR', label: 'Production Manager' },
   { value: 'SHOP_FLOOR_OPERATOR', label: 'Floor Manager' },
   { value: 'SUPER_ADMIN', label: 'Super Admin' },
+]
+
+export interface InventorySerialRow {
+  serialNumber: string
+  status: string
+  holderName: string
+}
+
+export interface InventoryProduct {
+  productId: string
+  productCode: string
+  name: string
+  uom: string
+  productType: string
+  isSerialControl: boolean
+  onHandQty: number
+  serials: InventorySerialRow[]
+}
+
+export interface InventoryResponse {
+  success: boolean
+  message?: string
+  inventory: InventoryProduct[]
+}
+
+export type StockTransferType =
+  | 'STORE_TO_OPERATOR'
+  | 'OPERATOR_TO_STORE'
+  | 'STORE_TO_VENDOR'
+  | 'VENDOR_TO_STORE'
+  | 'STORE_TO_DISPOSE'
+  | 'MISSING'
+
+export interface StockEntryPayload {
+  entryType: 'ISSUE' | 'RECEIPT'
+  productId: string
+  serialNumber?: string
+  quantity?: number
+  transferType: StockTransferType
+  fromPersonId?: string
+  fromPersonName: string
+  toPersonId?: string
+  toPersonName: string
+  remarks: string
+}
+
+export interface StockEntryResponse {
+  success: boolean
+  message: string
+  onHandQty?: number
+}
+
+export const STOCK_TRANSFER_OPTIONS: Array<{ value: StockTransferType; label: string }> = [
+  { value: 'STORE_TO_OPERATOR', label: 'Store to operator' },
+  { value: 'OPERATOR_TO_STORE', label: 'Operator to store' },
+  { value: 'STORE_TO_VENDOR', label: 'Store to vendor' },
+  { value: 'VENDOR_TO_STORE', label: 'Vendor to store' },
+  { value: 'STORE_TO_DISPOSE', label: 'Store to dispose' },
+  { value: 'MISSING', label: 'Missing' },
 ]

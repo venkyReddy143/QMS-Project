@@ -92,6 +92,8 @@ export function SuperAdminProduction() {
                 <th className="px-4 py-3">Batch</th>
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">Qty</th>
+                <th className="px-4 py-3">Machines</th>
+                <th className="px-4 py-3">Process qtys</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Action</th>
               </tr>
@@ -99,25 +101,42 @@ export function SuperAdminProduction() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
                     Loading production…
                   </td>
                 </tr>
               ) : visible.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
                     No production records found.
                   </td>
                 </tr>
               ) : (
                 visible.map((batch) => (
-                  <tr key={batch.id} className="border-t border-border">
+                  <tr key={batch.id} className="border-t border-border align-top">
                     <td className="px-4 py-3 font-bold text-accent">
                       {batch.orderNo || '—'}
                     </td>
                     <td className="px-4 py-3 font-semibold">{batch.batchNo}</td>
                     <td className="px-4 py-3">{batch.productName || '—'}</td>
                     <td className="px-4 py-3">{batch.plannedQuantity}</td>
+                    <td className="px-4 py-3">
+                      {(batch.assignedMachines ?? []).length === 0
+                        ? '—'
+                        : (batch.assignedMachines ?? [])
+                            .map((machine) => machine.machineCode || machine.machineName)
+                            .join(', ')}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <p>
+                        Not started: {batch.processQtys?.notStarted ?? batch.plannedQuantity}
+                      </p>
+                      {(batch.processQtys?.steps ?? []).map((step) => (
+                        <p key={step.name}>
+                          {step.name}: {step.inProgress} in progress, {step.queue} queue
+                        </p>
+                      ))}
+                    </td>
                     <td className="px-4 py-3">{statusLabel(batch.status)}</td>
                     <td className="px-4 py-3">
                       <button

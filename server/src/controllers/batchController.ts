@@ -7,6 +7,7 @@ import {
   type OrderPriority,
 } from '../constants/enums'
 import { DeliveryBatch } from '../models/DeliveryBatch'
+import { Machine } from '../models/Machine'
 import { ProductionOrder } from '../models/ProductionOrder'
 import { User } from '../models/User'
 import { buildBatchSerials } from '../utils/serialNumber'
@@ -16,6 +17,7 @@ interface BatchBody {
   orderNo?: string
   productId?: string
   processStepName?: string
+  machineIds?: string[] | string
   batchNo?: string
   plannedQuantity?: number | string
   bufferQty?: number | string
@@ -114,7 +116,14 @@ function serializeBatch(
       serialNumber: string
       sequence: number
       status: string
+      currentProcessStepName?: string
     }>
+    assignedMachines?: Array<{
+      machineId: { toString(): string }
+      machineCode: string
+      machineName: string
+    }>
+    processStepNames?: string[]
     createdBy: unknown
     createdAt?: Date
     updatedAt?: Date
@@ -128,6 +137,22 @@ function serializeBatch(
 
   const timeLogs = batch.timeLogs ?? []
   const loggedHours = timeLogs.reduce((sum, log) => sum + (log.hours ?? 0), 0)
+
+  const serials = (batch.serials ?? []).map((item) => ({
+    serialNumber: item.serialNumber,
+    sequence: item.sequence,
+    status: item.status,
+    currentProcessStepName: item.currentProcessStepName ?? '',
+  }))
+  const assignedMachines = (batch.assignedMachines ?? []).map((item) => ({
+    machineId: item.machineId.toString(),
+    machineCode: item.machineCode,
+    machineName: item.machineName,
+  }))
+  const processStepNames = (batch.processStepNames ?? []).filter(Boolean)
+  if (batch.processStepName && !processStepNames.includes(batch.processStepName)) {
+    processStepNames.push(batch.processStepName)
+  }
 
   return {
     id: batch._id.toString(),
@@ -161,12 +186,16 @@ function serializeBatch(
       loggedAt: log.loggedAt,
     })),
     loggedHours,
-    serials: (batch.serials ?? []).map((item) => ({
-      serialNumber: item.serialNumber,
-      sequence: item.sequence,
-      status: item.status,
-    })),
-    serialCount: (batch.serials ?? []).length,
+    serials,
+    serialCount: serials.length,
+    assignedMachines,
+    processStepNames,
+    processQtys: processWiseQtys({
+      plannedQuantity: batch.plannedQuantity,
+      processStepName: batch.processStepName ?? '',
+      processStepNames,
+      serials,
+    }),
     createdBy: createdByName(batch.createdBy),
     createdById:
       batch.createdBy &&
@@ -176,6 +205,49 @@ function serializeBatch(
         : String(batch.createdBy ?? ''),
     createdAt: batch.createdAt,
     updatedAt: batch.updatedAt,
+  }
+}
+
+function processWiseQtys(batch: {
+  plannedQuantity: number
+  processStepName: string
+  processStepNames: string[]
+  serials: Array<{
+    status: string
+    currentProcessStepName?: string
+  }>
+}) {
+  const serials = batch.serials
+  const steps = [...batch.processStepNames]
+  if (batch.processStepName && !steps.includes(batch.processStepName)) {
+    steps.push(batch.processStepName)
+  }
+
+  function stepOf(serial: { status: string; currentProcessStepName?: string }) {
+    if (serial.currentProcessStepName) return serial.currentProcessStepName
+    if (serial.status === 'COMPLETED') return ''
+    return batch.processStepName || ''
+  }
+
+  const notStarted = serials.filter((serial) => {
+    if (serial.status === 'COMPLETED') return false
+    return stepOf(serial) === ''
+  }).length
+
+  return {
+    total: batch.plannedQuantity,
+    notStarted,
+    steps: steps.map((name) => ({
+      name,
+      inProgress: serials.filter(
+        (serial) => serial.status === 'IN_PROGRESS' && stepOf(serial) === name,
+      ).length,
+      queue: serials.filter(
+        (serial) =>
+          (serial.status === 'QUEUED' || serial.status === 'ON_HOLD') &&
+          stepOf(serial) === name,
+      ).length,
+    })),
   }
 }
 
@@ -343,7 +415,38 @@ export async function createBatch(
       batchNo,
       quantity: plannedQuantity,
       startSequence: await nextSerialSequence(order._id),
+      currentProcessStepName: processStepName,
     })
+
+    const processStepNames = (productLine?.processSteps ?? [])
+      .map((step) => String(step.name ?? '').trim())
+      .filter(Boolean)
+
+    const requestedMachineIds = Array.isArray(req.body.machineIds)
+      ? req.body.machineIds
+      : String(req.body.machineIds ?? '')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+    const fallbackMachineId = productLine?.primaryMachineId
+      ? productLine.primaryMachineId.toString()
+      : ''
+    const machineIdList = [
+      ...new Set(
+        (requestedMachineIds.length > 0 ? requestedMachineIds : [fallbackMachineId]).filter(
+          (id) => looksLikeObjectId(id),
+        ),
+      ),
+    ]
+    const machines =
+      machineIdList.length > 0
+        ? await Machine.find({ _id: { $in: machineIdList } })
+        : []
+    const assignedMachines = machines.map((machine) => ({
+      machineId: machine._id,
+      machineCode: machine.machineCode,
+      machineName: machine.name,
+    }))
 
     const batch = await DeliveryBatch.create({
       orderId: order._id,
@@ -351,6 +454,7 @@ export async function createBatch(
       productId: productLine?.productId,
       productName: productLine?.productName ?? order.productNameSnapshot ?? '',
       processStepName,
+      processStepNames,
       batchNo,
       plannedQuantity,
       bufferQty,
@@ -364,6 +468,7 @@ export async function createBatch(
       assignments: [],
       timeLogs: [],
       serials,
+      assignedMachines,
       createdBy: req.user._id,
     })
 
