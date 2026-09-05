@@ -38,6 +38,16 @@ function toNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (value === true || value === 'true' || value === 'yes' || value === 1 || value === '1') {
+    return true
+  }
+  if (value === false || value === 'false' || value === 'no' || value === 0 || value === '0') {
+    return false
+  }
+  return fallback
+}
+
 function mapMasterStatus(value: unknown): MasterStatus | undefined {
   const normalized = String(value ?? '').trim().toUpperCase()
   if (MASTER_STATUSES.includes(normalized as MasterStatus)) {
@@ -84,6 +94,8 @@ function serializeMachine(machine: {
   name: string
   machineType: string
   bay?: string
+  location?: string
+  operatorSkills?: string
   maxHoursPerShift: number
   status: string
   maintenanceStatus?: string
@@ -95,6 +107,8 @@ function serializeMachine(machine: {
     name: machine.name,
     machineType: machine.machineType,
     bay: machine.bay ?? '',
+    location: machine.location ?? '',
+    operatorSkills: machine.operatorSkills ?? '',
     maxHoursPerShift: machine.maxHoursPerShift,
     status: machine.status,
     maintenanceStatus: machine.maintenanceStatus ?? 'HEALTHY',
@@ -110,6 +124,7 @@ function serializeProduct(product: {
   uom: string
   revision?: string
   productType: string
+  isSerialControl?: boolean
   unitRate: number
   status: string
 }) {
@@ -121,6 +136,7 @@ function serializeProduct(product: {
     uom: product.uom,
     revision: product.revision ?? '',
     productType: product.productType,
+    isSerialControl: Boolean(product.isSerialControl),
     unitRate: product.unitRate,
     status: product.status,
   }
@@ -203,6 +219,8 @@ export async function createMachine(
       name,
       machineType,
       bay: String(req.body.bay ?? '').trim(),
+      location: String(req.body.location ?? '').trim(),
+      operatorSkills: String(req.body.operatorSkills ?? '').trim(),
       maxHoursPerShift,
       status: MACHINE_STATUSES.includes(statusRaw as MachineStatus)
         ? statusRaw
@@ -252,6 +270,12 @@ export async function updateMachine(
       machine.machineType = String(req.body.machineType).trim()
     }
     if (req.body.bay !== undefined) machine.bay = String(req.body.bay).trim()
+    if (req.body.location !== undefined) {
+      machine.location = String(req.body.location).trim()
+    }
+    if (req.body.operatorSkills !== undefined) {
+      machine.operatorSkills = String(req.body.operatorSkills).trim()
+    }
     if (req.body.maxHoursPerShift !== undefined) {
       const hours = toNumber(req.body.maxHoursPerShift)
       if (hours === undefined || hours < 0) {
@@ -376,6 +400,7 @@ export async function createProduct(
       productType: PRODUCT_TYPES.includes(productTypeRaw as ProductType)
         ? productTypeRaw
         : 'PRODUCT',
+      isSerialControl: toBoolean(req.body.isSerialControl, false),
       unitRate,
       status: mapMasterStatus(req.body.status) ?? 'ACTIVE',
     })
@@ -429,6 +454,9 @@ export async function updateProduct(
         return
       }
       product.productType = productType as ProductType
+    }
+    if (req.body.isSerialControl !== undefined) {
+      product.isSerialControl = toBoolean(req.body.isSerialControl, product.isSerialControl)
     }
     if (req.body.unitRate !== undefined) {
       const unitRate = toNumber(req.body.unitRate)

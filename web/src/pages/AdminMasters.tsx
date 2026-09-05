@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react'
 import {
   createAdminCustomerApi,
@@ -95,6 +96,7 @@ interface MasterTabProps {
 }
 
 export function AdminMasters({ section }: { section?: Tab } = {}) {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>(section ?? 'machines')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -130,6 +132,32 @@ export function AdminMasters({ section }: { section?: Tab } = {}) {
           </p>
         </div>
         {tab !== 'calendars' ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {tab === 'products' && !showForm ? (
+            <>
+              <button
+                type="button"
+                onClick={() => navigate('/masters/products/inventory')}
+                className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:border-accent"
+              >
+                Inventory
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/masters/products/issue')}
+                className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:border-accent"
+              >
+                Issue
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/masters/products/receipt')}
+                className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:border-accent"
+              >
+                Receipt
+              </button>
+            </>
+          ) : null}
         <button
           type="button"
           onClick={() => {
@@ -151,6 +179,7 @@ export function AdminMasters({ section }: { section?: Tab } = {}) {
             </>
           )}
         </button>
+        </div>
         ) : null}
       </section>
 
@@ -258,6 +287,8 @@ function MachinesTab({
     name: '',
     machineType: '',
     bay: '',
+    location: '',
+    operatorSkills: '',
     maxHoursPerShift: '7.5',
     status: 'AVAILABLE',
     maintenanceStatus: 'HEALTHY',
@@ -302,6 +333,8 @@ function MachinesTab({
         name: form.name.trim(),
         machineType: form.machineType.trim(),
         bay: form.bay.trim(),
+        location: form.location.trim(),
+        operatorSkills: form.operatorSkills.trim(),
         maxHoursPerShift: Number(form.maxHoursPerShift),
         status: form.status,
         maintenanceStatus: form.maintenanceStatus,
@@ -383,6 +416,20 @@ function MachinesTab({
             onChange={(value) => setForm((current) => ({ ...current, bay: value }))}
           />
           <Field
+            label="Location"
+            value={form.location}
+            required={false}
+            onChange={(value) => setForm((current) => ({ ...current, location: value }))}
+          />
+          <Field
+            label="Operator skills required"
+            value={form.operatorSkills}
+            required={false}
+            onChange={(value) =>
+              setForm((current) => ({ ...current, operatorSkills: value }))
+            }
+          />
+          <Field
             label="Max Hours / Shift"
             type="number"
             value={form.maxHoursPerShift}
@@ -430,14 +477,15 @@ function MachinesTab({
       </section>
       ) : (
       <MasterTable
-        columns={['Code', 'Name', 'Type', 'Bay', 'Status', 'Active']}
+        columns={['Code', 'Name', 'Type', 'Location', 'Skills', 'Status', 'Active']}
         rows={items.map((item) => ({
           id: item.id,
           cells: [
             item.machineCode,
             item.name,
             item.machineType,
-            item.bay || '—',
+            item.location || item.bay || '—',
+            item.operatorSkills || '—',
             item.status,
             item.active ? 'Yes' : 'No',
           ],
@@ -449,6 +497,8 @@ function MachinesTab({
               name: item.name,
               machineType: item.machineType,
               bay: item.bay,
+              location: item.location ?? '',
+              operatorSkills: item.operatorSkills ?? '',
               maxHoursPerShift: String(item.maxHoursPerShift),
               status: item.status,
               maintenanceStatus: item.maintenanceStatus,
@@ -500,6 +550,7 @@ function ProductsTab({
     uom: 'PCS',
     unitRate: '',
     productType: 'PRODUCT',
+    isSerialControl: false,
     status: 'ACTIVE',
   }
   const [items, setItems] = useState<AdminProduct[]>([])
@@ -538,6 +589,7 @@ function ProductsTab({
         uom: form.uom.trim() || 'PCS',
         unitRate: Number(form.unitRate || 0),
         productType: form.productType,
+        isSerialControl: form.isSerialControl,
         status: form.status,
       }
       const response = editingId
@@ -598,6 +650,33 @@ function ProductsTab({
             onChange={(value) => setForm((current) => ({ ...current, unitRate: value }))}
           />
           <label className="block space-y-1.5">
+            <span className={labelClass}>Product Type</span>
+            <select
+              value={form.productType}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, productType: event.target.value }))
+              }
+              className={fieldClass}
+            >
+              <option value="PRODUCT">Product</option>
+              <option value="SPARE">Spare</option>
+              <option value="TOOL">Tool</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-3 pt-8">
+            <input
+              type="checkbox"
+              checked={form.isSerialControl}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  isSerialControl: event.target.checked,
+                }))
+              }
+            />
+            <span className={labelClass}>Is serial control</span>
+          </label>
+          <label className="block space-y-1.5">
             <span className={labelClass}>Status</span>
             <select
               value={form.status}
@@ -634,12 +713,14 @@ function ProductsTab({
       </section>
       ) : (
       <MasterTable
-        columns={['Code', 'Name', 'UOM', 'Unit Rate', 'Status']}
+        columns={['Code', 'Name', 'Type', 'Serial', 'UOM', 'Unit Rate', 'Status']}
         rows={items.map((item) => ({
           id: item.id,
           cells: [
             item.productCode,
             item.name,
+            item.productType || 'PRODUCT',
+            item.isSerialControl ? 'Yes' : 'No',
             item.uom,
             String(item.unitRate),
             item.status === 'ACTIVE' ? 'Active' : 'Inactive',
@@ -654,6 +735,7 @@ function ProductsTab({
               uom: item.uom,
               unitRate: String(item.unitRate),
               productType: item.productType,
+              isSerialControl: Boolean(item.isSerialControl),
               status: item.status,
             })
           },
@@ -1069,13 +1151,19 @@ function MachineTypesTab({
 }: MasterTabProps) {
   const empty = { name: '', status: 'ACTIVE' }
   const [items, setItems] = useState<AdminMachineType[]>([])
+  const [machines, setMachines] = useState<AdminMachine[]>([])
+  const [linkedType, setLinkedType] = useState<string | null>(null)
   const [form, setForm] = useState(empty)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const response = await fetchAdminMachineTypesApi()
-    setItems(response.machineTypes ?? [])
+    const [typesResponse, machinesResponse] = await Promise.all([
+      fetchAdminMachineTypesApi(),
+      fetchAdminMachinesApi(),
+    ])
+    setItems(typesResponse.machineTypes ?? [])
+    setMachines(machinesResponse.machines ?? [])
   }
 
   useEffect(() => {
@@ -1171,43 +1259,105 @@ function MachineTypesTab({
         </form>
       </section>
       ) : (
+      <>
       <MasterTable
-        columns={['Name', 'Status']}
-        rows={items.map((item) => ({
-          id: item.id,
-          cells: [item.name, item.status === 'ACTIVE' ? 'Active' : 'Inactive'],
-          onEdit: () => {
-            setEditingId(item.id)
-            onShowForm(true)
-            setForm({ name: item.name, status: item.status })
-          },
-          onDelete: () => {
-            if (!window.confirm(`Delete ${item.name}?`)) return
-            void deleteAdminMachineTypeApi(item.id)
-              .then(async (response) => {
-                if (!response.success) {
-                  onNotice(response.message || 'Failed to delete machine type.', null)
-                  return
-                }
-                if (editingId === item.id) {
-                  setEditingId(null)
-                  setForm(empty)
-                }
-                onNotice(null, response.message)
-                await load()
-              })
-              .catch((deleteError: unknown) =>
-                onNotice(
-                  deleteError instanceof Error
-                    ? deleteError.message
-                    : 'Failed to delete machine type.',
-                  null,
-                ),
-              )
-          },
-        }))}
+        columns={['Name', 'Status', 'Machines']}
+        rows={items.map((item) => {
+          const linked = machines.filter((machine) => machine.machineType === item.name)
+          return {
+            id: item.id,
+            cells: [
+              item.name,
+              item.status === 'ACTIVE' ? 'Active' : 'Inactive',
+              String(linked.length),
+            ],
+            extra: [
+              {
+                label: 'Linked machines',
+                onClick: () => setLinkedType(item.name),
+              },
+            ],
+            onEdit: () => {
+              setEditingId(item.id)
+              onShowForm(true)
+              setForm({ name: item.name, status: item.status })
+            },
+            onDelete: () => {
+              if (!window.confirm(`Delete ${item.name}?`)) return
+              void deleteAdminMachineTypeApi(item.id)
+                .then(async (response) => {
+                  if (!response.success) {
+                    onNotice(response.message || 'Failed to delete machine type.', null)
+                    return
+                  }
+                  if (editingId === item.id) {
+                    setEditingId(null)
+                    setForm(empty)
+                  }
+                  onNotice(null, response.message)
+                  await load()
+                })
+                .catch((deleteError: unknown) =>
+                  onNotice(
+                    deleteError instanceof Error
+                      ? deleteError.message
+                      : 'Failed to delete machine type.',
+                    null,
+                  ),
+                )
+            },
+          }
+        })}
         empty="No machine types yet."
       />
+      {linkedType ? (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="max-h-[80vh] w-full max-w-2xl overflow-auto rounded-2xl border border-border bg-surface-raised p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold">Linked machines</h3>
+                <p className="text-sm text-muted">{linkedType}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkedType(null)}
+                className="min-h-10 rounded-xl border border-border px-4 text-sm font-bold"
+              >
+                Close
+              </button>
+            </div>
+            {machines.filter((machine) => machine.machineType === linkedType).length === 0 ? (
+              <p className="text-sm text-muted">No machines linked to this type.</p>
+            ) : (
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-xs font-bold uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="py-2 pr-4">Code</th>
+                    <th className="py-2 pr-4">Name</th>
+                    <th className="py-2 pr-4">Location</th>
+                    <th className="py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {machines
+                    .filter((machine) => machine.machineType === linkedType)
+                    .map((machine) => (
+                      <tr key={machine.id} className="border-t border-border">
+                        <td className="py-2 pr-4 font-semibold">{machine.machineCode}</td>
+                        <td className="py-2 pr-4">{machine.name}</td>
+                        <td className="py-2 pr-4">
+                          {machine.location || machine.bay || '—'}
+                        </td>
+                        <td className="py-2">{machine.status}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      ) : null}
+      </>
       )}
     </>
   )
@@ -1742,6 +1892,7 @@ function MasterTable({
   rows: Array<{
     id: string
     cells: string[]
+    extra?: Array<{ label: string; onClick: () => void }>
     onEdit: () => void
     onDelete: () => void
   }>
@@ -1783,7 +1934,17 @@ function MasterTable({
                     </td>
                   ))}
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {(row.extra ?? []).map((action) => (
+                        <button
+                          key={action.label}
+                          type="button"
+                          onClick={action.onClick}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent hover:text-accent"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
                       <button
                         type="button"
                         onClick={row.onEdit}

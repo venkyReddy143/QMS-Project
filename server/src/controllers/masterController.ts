@@ -138,6 +138,8 @@ export async function listMachines(
         name: machine.name,
         machineType: machine.machineType,
         bay: machine.bay ?? '',
+        location: machine.location ?? '',
+        operatorSkills: machine.operatorSkills ?? '',
         maxHoursPerShift: machine.maxHoursPerShift,
         status: machine.status,
         maintenanceStatus: machine.maintenanceStatus ?? 'HEALTHY',

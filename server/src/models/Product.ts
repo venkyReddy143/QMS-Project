@@ -13,6 +13,7 @@ export interface IProduct {
   uom: string
   revision?: string
   productType: ProductType
+  isSerialControl: boolean
   unitRate: number
   status: MasterStatus
 }
@@ -51,6 +52,11 @@ const productSchema = new Schema<IProduct>(
       enum: PRODUCT_TYPES,
       required: true,
       default: 'PRODUCT',
+    },
+    isSerialControl: {
+      type: Boolean,
+      required: true,
+      default: false,
     },
     unitRate: {
       type: Number,

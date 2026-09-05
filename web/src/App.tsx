@@ -12,6 +12,8 @@ import { MyTasks } from './pages/MyTasks'
 import { OrderDetail } from './pages/OrderDetail'
 import { OrdersList } from './pages/OrdersList'
 import { ProductionPlanning } from './pages/ProductionPlanning'
+import { CreateBatch } from './pages/CreateBatch'
+import { ProductStock } from './pages/ProductStock'
 import { SuperAdminDashboard } from './pages/SuperAdminDashboard'
 import { SuperAdminProduction } from './pages/SuperAdminProduction'
 import { useAppDispatch } from './store/hooks'
@@ -121,6 +123,30 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/masters/products/inventory"
+          element={
+            <ProtectedRoute path="/masters/products">
+              <ProductStock mode="inventory" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/products/issue"
+          element={
+            <ProtectedRoute path="/masters/products">
+              <ProductStock mode="issue" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/products/receipt"
+          element={
+            <ProtectedRoute path="/masters/products">
+              <ProductStock mode="receipt" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/masters/machine-types"
           element={
             <ProtectedRoute path="/masters/machine-types">
@@ -221,6 +247,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute path="/orders">
               <OrdersList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders/:orderId/create-batch"
+          element={
+            <ProtectedRoute path="/orders">
+              <CreateBatch />
             </ProtectedRoute>
           }
         />

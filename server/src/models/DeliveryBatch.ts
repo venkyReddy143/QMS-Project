@@ -12,6 +12,13 @@ export interface IBatchSerial {
   serialNumber: string
   sequence: number
   status: SerialStatus
+  currentProcessStepName?: string
+}
+
+export interface IBatchMachine {
+  machineId: Types.ObjectId
+  machineCode: string
+  machineName: string
 }
 
 export interface IBatchAssignment {
@@ -36,6 +43,7 @@ export interface IDeliveryBatch {
   productId?: Types.ObjectId
   productName?: string
   processStepName?: string
+  processStepNames: string[]
   batchNo: string
   plannedQuantity: number
   bufferQty: number
@@ -49,6 +57,7 @@ export interface IDeliveryBatch {
   assignments: IBatchAssignment[]
   timeLogs: IBatchTimeLog[]
   serials: IBatchSerial[]
+  assignedMachines: IBatchMachine[]
   createdBy: Types.ObjectId
 }
 
@@ -77,6 +86,10 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
       type: String,
       trim: true,
       default: '',
+    },
+    processStepNames: {
+      type: [String],
+      default: [],
     },
     batchNo: {
       type: String,
@@ -173,6 +186,25 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
             required: true,
             default: 'QUEUED',
           },
+          currentProcessStepName: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+        },
+      ],
+      default: [],
+    },
+    assignedMachines: {
+      type: [
+        {
+          machineId: {
+            type: Schema.Types.ObjectId,
+            ref: 'Machine',
+            required: true,
+          },
+          machineCode: { type: String, required: true, trim: true },
+          machineName: { type: String, required: true, trim: true },
         },
       ],
       default: [],

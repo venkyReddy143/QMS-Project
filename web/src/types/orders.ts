@@ -118,6 +118,25 @@ export interface BatchSerial {
   serialNumber: string
   sequence: number
   status: SerialStatusApi | string
+  currentProcessStepName?: string
+}
+
+export interface BatchAssignedMachine {
+  machineId: string
+  machineCode: string
+  machineName: string
+}
+
+export interface BatchProcessQtyStep {
+  name: string
+  inProgress: number
+  queue: number
+}
+
+export interface BatchProcessQtys {
+  total: number
+  notStarted: number
+  steps: BatchProcessQtyStep[]
 }
 
 export interface ProductionBatch {
@@ -127,6 +146,7 @@ export interface ProductionBatch {
   productId?: string
   productName?: string
   processStepName?: string
+  processStepNames?: string[]
   batchNo: string
   plannedQuantity: number
   targetDispatchDate: string
@@ -137,6 +157,8 @@ export interface ProductionBatch {
   loggedHours: number
   serials: BatchSerial[]
   serialCount?: number
+  assignedMachines?: BatchAssignedMachine[]
+  processQtys?: BatchProcessQtys
   createdBy?: string
   createdById?: string
   createdAt?: string
@@ -145,6 +167,7 @@ export interface ProductionBatch {
 export interface CreateBatchPayload {
   productId: string
   processStepName?: string
+  machineIds?: string[]
   batchNo: string
   plannedQuantity: number
   targetDispatchDate: string

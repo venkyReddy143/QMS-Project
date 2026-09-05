@@ -57,3 +57,25 @@ export const SERIAL_STATUSES = [
   'ON_HOLD',
 ] as const
 export type SerialStatus = (typeof SERIAL_STATUSES)[number]
+
+export const STOCK_ENTRY_TYPES = ['ISSUE', 'RECEIPT'] as const
+export type StockEntryType = (typeof STOCK_ENTRY_TYPES)[number]
+
+export const STOCK_TRANSFER_TYPES = [
+  'STORE_TO_OPERATOR',
+  'OPERATOR_TO_STORE',
+  'STORE_TO_VENDOR',
+  'VENDOR_TO_STORE',
+  'STORE_TO_DISPOSE',
+  'MISSING',
+] as const
+export type StockTransferType = (typeof STOCK_TRANSFER_TYPES)[number]
+
+export const INVENTORY_SERIAL_STATUSES = [
+  'IN_STORE',
+  'WITH_OPERATOR',
+  'WITH_VENDOR',
+  'DISPOSED',
+  'MISSING',
+] as const
+export type InventorySerialStatus = (typeof INVENTORY_SERIAL_STATUSES)[number]
