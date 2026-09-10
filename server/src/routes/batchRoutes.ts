@@ -4,6 +4,9 @@ import {
   getBatch,
   listBatches,
   updateBatch,
+  activateBatch,
+  updateBatchSerials,
+  assignSerialsToShift,
 } from '../controllers/batchController'
 import { requireAuth } from '../middleware/auth'
 
@@ -15,3 +18,6 @@ batchRoutes.get('/listBatches', listBatches)
 batchRoutes.get('/getBatch/:id', getBatch)
 batchRoutes.put('/updateBatch/:id', updateBatch)
 batchRoutes.patch('/updateBatch/:id', updateBatch)
+batchRoutes.post('/:batchId/activate', activateBatch)
+batchRoutes.post('/:batchId/serials', updateBatchSerials)
+batchRoutes.post('/:batchId/assign-serials', assignSerialsToShift)

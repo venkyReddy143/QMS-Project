@@ -47,6 +47,7 @@ export function CreateBatch() {
   const [quantity, setQuantity] = useState('')
   const [targetDate, setTargetDate] = useState(todayIsoDate())
   const [priority, setPriority] = useState<'Normal' | 'High' | 'Urgent'>('Normal')
+  const [productionInCharge, setProductionInCharge] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -150,6 +151,9 @@ export function CreateBatch() {
         productId,
         processStepName: processStepName || undefined,
         machineIds,
+        deferSerials: true,
+        status: 'CREATED',
+        productionInCharge: productionInCharge.trim(),
         batchNo: batchNo.trim(),
         plannedQuantity: qty,
         targetDispatchDate: targetDate,
@@ -305,6 +309,19 @@ export function CreateBatch() {
                 <option value="Urgent">Urgent</option>
               </select>
             </label>
+            <label className="block space-y-1.5 sm:col-span-2">
+              <span className={labelClass}>Production In Charge</span>
+              <input
+                value={productionInCharge}
+                onChange={(event) => setProductionInCharge(event.target.value)}
+                className={fieldClass}
+                placeholder="Person responsible for this batch"
+              />
+            </label>
+            <p className="sm:col-span-2 text-sm text-muted">
+              Batch is created with status Created. Activate the batch later to
+              generate serial numbers and first-process records.
+            </p>
             <div className="sm:col-span-2 flex justify-end">
               <button
                 type="submit"

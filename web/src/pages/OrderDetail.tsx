@@ -153,10 +153,13 @@ export function OrderDetail() {
   )
 
   const [customerName, setCustomerName] = useState('')
+  const [ownerName, setOwnerName] = useState('')
+  const [inChargeName, setInChargeName] = useState('')
   const [plans, setPlans] = useState<ProductPlan[]>([])
   const [formError, setFormError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [view, setView] = useState<'details' | 'batches'>('details')
+  const [expandedProcessLine, setExpandedProcessLine] = useState<string | null>(null)
 
   useEffect(() => {
     if (!orderId) return
@@ -180,6 +183,8 @@ export function OrderDetail() {
   useEffect(() => {
     if (!order) return
     setCustomerName(order.customerName ?? '')
+    setOwnerName(order.ownerName ?? '')
+    setInChargeName(order.inChargeName ?? '')
     setPlans(
       (order.products ?? []).map((line) => ({
         productId: line.productId,
@@ -331,16 +336,25 @@ export function OrderDetail() {
         orderId: order.id,
         payload: {
           customerName: customerName.trim(),
-          products: plans.map((plan) => ({
+          ownerName: ownerName.trim(),
+          inChargeName: inChargeName.trim(),
+          products: plans.map((plan) => {
+            const line = order.products?.find((item) => item.productId === plan.productId)
+            return {
             productId: plan.productId,
             primaryMachineId: plan.machineId,
+            drawingNumber: line?.drawingNumber,
+            remarks: line?.remarks,
+            rawMaterialSourcing:
+              (line?.rawMaterialSourcing as 'COMPANY' | 'CUSTOMER' | undefined) ??
+              'COMPANY',
             processSteps: plan.steps.map((step) => ({
               name: step.name,
               hoursPerPiece: step.hours,
               isCustom: step.isCustom,
               ...(step.code ? { code: step.code } : {}),
             })),
-          })),
+          }}),
         },
       }),
     )
@@ -377,9 +391,10 @@ export function OrderDetail() {
 
   const productsOnOrder = order.products ?? []
   const planningReady = isPlanningComplete(order)
+  const isSuperAdmin = user?.role === 'Super Admin'
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <button
         type="button"
         onClick={() => navigate('/orders')}
@@ -390,9 +405,45 @@ export function OrderDetail() {
       </button>
 
       <section className="rounded-2xl border border-border bg-surface-raised p-5">
-        <p className="text-sm font-semibold text-muted">Order</p>
+        <p className="text-sm font-semibold text-muted">
+          {isSuperAdmin ? 'View Details' : 'Order'}
+        </p>
         <h2 className="text-2xl font-bold text-foreground">{order.orderNo}</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-border bg-surface-muted p-3">
+            <p className="text-xs font-semibold text-muted">Order ID</p>
+            <p className="mt-1 font-bold">{order.orderNo}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-muted p-3">
+            <p className="text-xs font-semibold text-muted">Order Date</p>
+            <p className="mt-1 font-bold">
+              {formatDate(order.orderDate || order.createdAt)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-muted p-3">
+            <p className="text-xs font-semibold text-muted">Customer</p>
+            <p className="mt-1 font-bold">{order.customerName || '—'}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-muted p-3">
+            <p className="text-xs font-semibold text-muted">PO Ref</p>
+            <p className="mt-1 font-bold">{order.customerPoRef || '—'}</p>
+          </div>
+          {isSuperAdmin ? (
+            <>
+              <div className="rounded-xl border border-border bg-surface-muted p-3">
+                <p className="text-xs font-semibold text-muted">Owner</p>
+                <p className="mt-1 font-bold">{order.ownerName || '—'}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-surface-muted p-3">
+                <p className="text-xs font-semibold text-muted">In Charge</p>
+                <p className="mt-1 font-bold">{order.inChargeName || '—'}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-surface-muted p-3">
+                <p className="text-xs font-semibold text-muted">Remarks</p>
+                <p className="mt-1 font-bold">{order.notes || '—'}</p>
+              </div>
+            </>
+          ) : null}
           <div className="rounded-xl border border-border bg-surface-muted p-3">
             <p className="text-xs font-semibold text-muted">Status</p>
             <p className="mt-1 font-bold">{statusLabel(order.status)}</p>
@@ -412,6 +463,89 @@ export function OrderDetail() {
         </div>
       </section>
 
+      {isSuperAdmin && view === 'details' ? (
+        <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised">
+          <div className="border-b border-border px-5 py-4">
+            <h3 className="text-lg font-bold">Order Lines</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="px-4 py-3">Line</th>
+                  <th className="px-4 py-3">Product</th>
+                  <th className="px-4 py-3">Product Desc</th>
+                  <th className="px-4 py-3">Drawing Ref</th>
+                  <th className="px-4 py-3">Qty</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productsOnOrder.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-6 text-center text-muted">
+                      No lines.
+                    </td>
+                  </tr>
+                ) : (
+                  productsOnOrder.map((line, index) => (
+                    <tr key={`${line.productId}-${index}`} className="border-t border-border align-top">
+                      <td className="px-4 py-3 font-semibold">
+                        {line.lineNumber ?? index + 1}
+                      </td>
+                      <td className="px-4 py-3">{line.productName}</td>
+                      <td className="px-4 py-3">{line.description || '—'}</td>
+                      <td className="px-4 py-3">{line.drawingNumber || '—'}</td>
+                      <td className="px-4 py-3">{line.quantity}</td>
+                      <td className="px-4 py-3">{line.lineStatus || 'OPEN'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setView('batches')}
+                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
+                          >
+                            View Production Batch
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedProcessLine(
+                                expandedProcessLine === line.productId
+                                  ? null
+                                  : line.productId,
+                              )
+                            }
+                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
+                          >
+                            View Process Steps
+                          </button>
+                        </div>
+                        {expandedProcessLine === line.productId ? (
+                          <ul className="mt-2 space-y-1 text-xs text-muted">
+                            {(line.processSteps ?? []).length === 0 ? (
+                              <li>No process steps yet.</li>
+                            ) : (
+                              (line.processSteps ?? []).map((step, stepIndex) => (
+                                <li key={`${step.name}-${stepIndex}`}>
+                                  {step.sequence ?? stepIndex + 1}. {step.name} (
+                                  {step.hoursPerPiece}h)
+                                </li>
+                              ))
+                            )}
+                          </ul>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {canEdit ? (
         <div className="flex gap-2">
           <button
@@ -428,7 +562,7 @@ export function OrderDetail() {
           <button
             type="button"
             onClick={() => setView('batches')}
-            disabled={!planningReady}
+            disabled={!isSuperAdmin && !planningReady}
             className={`min-h-11 rounded-xl px-4 text-sm font-bold ${
               view === 'batches'
                 ? 'bg-accent text-white'
@@ -446,6 +580,7 @@ export function OrderDetail() {
         <form onSubmit={handleSave} className="space-y-4">
           <section className="rounded-2xl border border-border bg-surface-raised p-5">
             <h3 className="mb-4 text-lg font-bold text-foreground">Customer</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
             <label className="block space-y-1.5">
               <span className={labelClass}>Customer Name</span>
               <select
@@ -473,6 +608,29 @@ export function OrderDetail() {
                 ))}
               </select>
             </label>
+            <label className="block space-y-1.5">
+              <span className={labelClass}>Owner</span>
+              <input
+                value={ownerName}
+                onChange={(event) => {
+                  setOwnerName(event.target.value)
+                  setSaved(false)
+                }}
+                className={fieldClass}
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className={labelClass}>In Charge</span>
+              <input
+                value={inChargeName}
+                onChange={(event) => {
+                  setInChargeName(event.target.value)
+                  setSaved(false)
+                }}
+                className={fieldClass}
+              />
+            </label>
+            </div>
           </section>
 
           {productsOnOrder.map((line, index) => {

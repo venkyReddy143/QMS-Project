@@ -1,13 +1,23 @@
 export type OrderPriorityApi = 'NORMAL' | 'HIGH' | 'URGENT'
 
+export type RawMaterialSourcing = 'COMPANY' | 'CUSTOMER'
+export type OrderLineStatusApi = 'OPEN' | 'IN_PRODUCTION' | 'COMPLETED' | 'ON_HOLD'
+
 export interface CreateOrderProductPayload {
   productId: string
   quantity: number
   description?: string
+  drawingNumber?: string
+  remarks?: string
+  rawMaterialSourcing?: RawMaterialSourcing
 }
 
 export interface CreateOrderPayload {
   customerPoRef: string
+  customerName?: string
+  ownerName?: string
+  inChargeName?: string
+  orderDate?: string
   products: CreateOrderProductPayload[]
   budget?: number
   estimationPrice?: number
@@ -21,14 +31,20 @@ export interface OrderProcessStep {
   hoursPerPiece: number
   isCustom: boolean
   code?: string
+  sequence?: number
 }
 
 export interface OrderProductLine {
   productId: string
   productCode: string
   productName: string
+  lineNumber?: number
   quantity: number
   description?: string
+  drawingNumber?: string
+  remarks?: string
+  lineStatus?: OrderLineStatusApi | string
+  rawMaterialSourcing?: RawMaterialSourcing | string
   uom: string
   unitRate: number
   estimationPrice: number
@@ -39,9 +55,15 @@ export interface OrderProductLine {
 
 export interface UpdateOrderPlanningPayload {
   customerName: string
+  ownerName?: string
+  inChargeName?: string
   products: Array<{
     productId: string
     primaryMachineId: string
+    drawingNumber?: string
+    remarks?: string
+    rawMaterialSourcing?: RawMaterialSourcing
+    lineStatus?: OrderLineStatusApi
     processSteps: OrderProcessStep[]
   }>
 }
@@ -55,8 +77,11 @@ export interface UpdateOrderPlanningResponse {
 export interface ProductionOrder {
   id: string
   orderNo: string
+  orderDate?: string
   customerName?: string
   customerPoRef: string
+  ownerName?: string
+  inChargeName?: string
   products: OrderProductLine[]
   productId?: string
   productCode?: string
@@ -112,13 +137,26 @@ export interface BatchTimeLog {
   loggedAt?: string
 }
 
-export type SerialStatusApi = 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD'
+export type SerialStatusApi =
+  | 'QUEUED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'ON_HOLD'
+  | 'QC_REJECTED'
+  | 'FULL_READY'
 
 export interface BatchSerial {
   serialNumber: string
   sequence: number
   status: SerialStatusApi | string
   currentProcessStepName?: string
+  completedPercent?: number
+  comments?: string
+  machineId?: string
+  machineCode?: string
+  shift?: string
+  operatorId?: string
+  operatorName?: string
 }
 
 export interface BatchAssignedMachine {
@@ -127,15 +165,30 @@ export interface BatchAssignedMachine {
   machineName: string
 }
 
+export interface BatchProcessMachine {
+  processStepName: string
+  sequence: number
+  machineId?: string
+  machineCode?: string
+  machineName?: string
+}
+
 export interface BatchProcessQtyStep {
   name: string
+  sequence?: number
+  status?: string
   inProgress: number
   queue: number
+  qcRejected?: number
+  completed?: number
+  fullReady?: number
 }
 
 export interface BatchProcessQtys {
   total: number
   notStarted: number
+  qcRejected?: number
+  fullReady?: number
   steps: BatchProcessQtyStep[]
 }
 
@@ -145,13 +198,18 @@ export interface ProductionBatch {
   orderNo: string
   productId?: string
   productName?: string
+  productDescription?: string
+  drawingNumber?: string
+  lineNumber?: number | null
   processStepName?: string
   processStepNames?: string[]
+  processMachines?: BatchProcessMachine[]
   batchNo: string
   plannedQuantity: number
   targetDispatchDate: string
   priority: string
   status: string
+  productionInCharge?: string
   assignments: BatchAssignment[]
   timeLogs: BatchTimeLog[]
   loggedHours: number
@@ -168,6 +226,9 @@ export interface CreateBatchPayload {
   productId: string
   processStepName?: string
   machineIds?: string[]
+  deferSerials?: boolean
+  productionInCharge?: string
+  status?: string
   batchNo: string
   plannedQuantity: number
   targetDispatchDate: string

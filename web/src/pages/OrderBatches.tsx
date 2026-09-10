@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, PlusCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { createBatchApi, fetchBatchesApi } from '../lib/api/batches'
+import { createBatchApi, fetchBatchesApi, activateBatchApi } from '../lib/api/batches'
 import type {
   OrderPriorityApi,
   ProductionBatch,
@@ -90,6 +90,7 @@ export function OrderBatches({
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [activatingId, setActivatingId] = useState<string | null>(null)
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null)
 
   const [productId, setProductId] = useState(products[0]?.productId ?? '')
@@ -135,6 +136,32 @@ export function OrderBatches({
       .reduce((sum, batch) => sum + batch.plannedQuantity, 0)
     return Math.max(0, selectedProduct.quantity - allocated)
   }, [batches, processStepName, selectedProduct])
+
+  async function handleActivate(batchId: string) {
+    setError(null)
+    setMessage(null)
+    setActivatingId(batchId)
+    try {
+      const response = await activateBatchApi(order.id, batchId)
+      if (!response.success || !response.batch) {
+        setError(response.message || 'Failed to activate batch.')
+        return
+      }
+      setBatches((current) =>
+        current.map((item) => (item.id === batchId ? response.batch! : item)),
+      )
+      setExpandedBatchId(batchId)
+      setMessage(response.message)
+    } catch (activateError) {
+      setError(
+        activateError instanceof Error
+          ? activateError.message
+          : 'Failed to activate batch.',
+      )
+    } finally {
+      setActivatingId(null)
+    }
+  }
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
@@ -333,15 +360,17 @@ export function OrderBatches({
                 <th className="px-4 py-3">Process Step</th>
                 <th className="px-4 py-3">Qty</th>
                 {isSuperAdmin ? <th className="px-4 py-3">Machines</th> : null}
+                {isSuperAdmin ? <th className="px-4 py-3">Status</th> : null}
                 <th className="px-4 py-3">Serials</th>
                 <th className="px-4 py-3">Dispatch Date</th>
                 <th className="px-4 py-3">Priority</th>
+                {isSuperAdmin ? <th className="px-4 py-3">Actions</th> : null}
               </tr>
             </thead>
             <tbody>
               {batches.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 9 : 8} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={isSuperAdmin ? 11 : 8} className="px-4 py-8 text-center text-muted">
                     No batches yet.
                   </td>
                 </tr>
@@ -398,9 +427,16 @@ export function OrderBatches({
                         {isSuperAdmin ? (
                           <td className="px-4 py-3">{machineNames(batch)}</td>
                         ) : null}
+                        {isSuperAdmin ? (
+                          <td className="px-4 py-3">{batch.status}</td>
+                        ) : null}
                         <td className="px-4 py-3">
                           {serials.length === 0 ? (
-                            '—'
+                            batch.status === 'CREATED' ? (
+                              <span className="text-muted">Pending activate</span>
+                            ) : (
+                              '—'
+                            )
                           ) : (
                             <span className="font-semibold text-accent">
                               {serials.length} pcs
@@ -414,28 +450,75 @@ export function OrderBatches({
                           {formatDate(batch.targetDispatchDate)}
                         </td>
                         <td className="px-4 py-3">{priorityLabel(batch.priority)}</td>
+                        {isSuperAdmin ? (
+                          <td className="px-4 py-3">
+                            {batch.status === 'CREATED' ? (
+                              <button
+                                type="button"
+                                disabled={activatingId === batch.id}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void handleActivate(batch.id)
+                                }}
+                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent disabled:opacity-60"
+                              >
+                                {activatingId === batch.id ? 'Activating…' : 'Activate'}
+                              </button>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                        ) : null}
                       </tr>
                       {isSuperAdmin ? (
                         <tr className="border-t border-border bg-surface-muted/30">
-                          <td colSpan={9} className="px-4 py-3 text-sm">
+                          <td colSpan={11} className="px-4 py-3 text-sm">
                             <p className="font-bold">
                               {batch.batchNo} — {batch.processQtys?.total ?? batch.plannedQuantity} qty
+                              {batch.productionInCharge
+                                ? ` · In charge: ${batch.productionInCharge}`
+                                : ''}
                             </p>
                             <p className="mt-1 text-muted">
                               Not started:{' '}
-                              {batch.processQtys?.notStarted ?? batch.plannedQuantity} qty
+                              {batch.processQtys?.notStarted ?? 0} · QC rejected:{' '}
+                              {batch.processQtys?.qcRejected ?? 0} · Full ready:{' '}
+                              {batch.processQtys?.fullReady ?? 0}
                             </p>
-                            {(batch.processQtys?.steps ?? []).map((step) => (
-                              <p key={step.name} className="text-muted">
-                                {step.name}: {step.inProgress} in progress, {step.queue} queue
-                              </p>
-                            ))}
+                            <div className="mt-2 overflow-x-auto">
+                              <table className="min-w-full text-left text-xs">
+                                <thead>
+                                  <tr className="uppercase text-muted">
+                                    <th className="py-1 pr-3">Process Step</th>
+                                    <th className="py-1 pr-3">Seq</th>
+                                    <th className="py-1 pr-3">Status</th>
+                                    <th className="py-1 pr-3">Queue</th>
+                                    <th className="py-1 pr-3">In Progress</th>
+                                    <th className="py-1 pr-3">QC Rejected</th>
+                                    <th className="py-1">Completed</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(batch.processQtys?.steps ?? []).map((step) => (
+                                    <tr key={step.name}>
+                                      <td className="py-1 pr-3 font-semibold">{step.name}</td>
+                                      <td className="py-1 pr-3">{step.sequence ?? '—'}</td>
+                                      <td className="py-1 pr-3">{step.status ?? '—'}</td>
+                                      <td className="py-1 pr-3">{step.queue}</td>
+                                      <td className="py-1 pr-3">{step.inProgress}</td>
+                                      <td className="py-1 pr-3">{step.qcRejected ?? 0}</td>
+                                      <td className="py-1">{step.completed ?? 0}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </td>
                         </tr>
                       ) : null}
                       {expanded ? (
                         <tr className="border-t border-border bg-surface-muted/50">
-                          <td colSpan={isSuperAdmin ? 9 : 8} className="px-4 py-3">
+                          <td colSpan={isSuperAdmin ? 11 : 8} className="px-4 py-3">
                             <div className="max-h-72 overflow-auto rounded-xl border border-border bg-surface-raised">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">

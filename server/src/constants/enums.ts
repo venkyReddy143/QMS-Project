@@ -38,6 +38,8 @@ export const MACHINE_HEALTH_STATUSES = [
 export type MachineHealthStatus = (typeof MACHINE_HEALTH_STATUSES)[number]
 
 export const BATCH_STATUSES = [
+  'CREATED',
+  'ACTIVE',
   'SCHEDULED',
   'RELEASED',
   'IN_ASSEMBLY',
@@ -55,8 +57,21 @@ export const SERIAL_STATUSES = [
   'IN_PROGRESS',
   'COMPLETED',
   'ON_HOLD',
+  'QC_REJECTED',
+  'FULL_READY',
 ] as const
 export type SerialStatus = (typeof SERIAL_STATUSES)[number]
+
+export const ORDER_LINE_STATUSES = [
+  'OPEN',
+  'IN_PRODUCTION',
+  'COMPLETED',
+  'ON_HOLD',
+] as const
+export type OrderLineStatus = (typeof ORDER_LINE_STATUSES)[number]
+
+export const RAW_MATERIAL_SOURCES = ['COMPANY', 'CUSTOMER'] as const
+export type RawMaterialSource = (typeof RAW_MATERIAL_SOURCES)[number]
 
 export const STOCK_ENTRY_TYPES = ['ISSUE', 'RECEIPT'] as const
 export type StockEntryType = (typeof STOCK_ENTRY_TYPES)[number]

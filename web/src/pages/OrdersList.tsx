@@ -72,6 +72,7 @@ export function OrdersList({
   const navigate = useNavigate()
   const { user } = useAuth()
   const canCreate = canCreateOrders(user?.role)
+  const isSuperAdmin = user?.role === 'Super Admin'
   const orders = useAppSelector((state) => state.orders.items)
   const listStatus = useAppSelector((state) => state.orders.listStatus)
   const listError = useAppSelector((state) => state.orders.listError)
@@ -125,13 +126,17 @@ export function OrdersList({
     }
   }, [visibleOrders])
 
+  const colSpan = isSuperAdmin ? 6 : 7
+
   return (
     <div className="space-y-4">
       <section className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-surface-raised p-5">
         <div>
           <h2 className="text-2xl font-bold text-foreground">{heading}</h2>
           <p className="mt-1 text-base text-muted">
-            {subtitle}
+            {isSuperAdmin
+              ? 'Header-level orders. Use View Details for lines, batches, and process steps.'
+              : subtitle}
           </p>
         </div>
         {canCreate ? (
@@ -146,20 +151,22 @@ export function OrdersList({
         ) : null}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-border bg-surface-raised p-4">
-          <p className="text-sm font-semibold text-muted">Open Orders</p>
-          <p className="mt-1 text-3xl font-bold text-foreground">{stats.open}</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-surface-raised p-4">
-          <p className="text-sm font-semibold text-muted">In Production</p>
-          <p className="mt-1 text-3xl font-bold text-accent">{stats.inProduction}</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-surface-raised p-4">
-          <p className="text-sm font-semibold text-muted">Ready to Dispatch</p>
-          <p className="mt-1 text-3xl font-bold text-success">{stats.ready}</p>
-        </div>
-      </section>
+      {!isSuperAdmin ? (
+        <section className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-surface-raised p-4">
+            <p className="text-sm font-semibold text-muted">Open Orders</p>
+            <p className="mt-1 text-3xl font-bold text-foreground">{stats.open}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-raised p-4">
+            <p className="text-sm font-semibold text-muted">In Production</p>
+            <p className="mt-1 text-3xl font-bold text-accent">{stats.inProduction}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-raised p-4">
+            <p className="text-sm font-semibold text-muted">Ready to Dispatch</p>
+            <p className="mt-1 text-3xl font-bold text-success">{stats.ready}</p>
+          </div>
+        </section>
+      ) : null}
 
       <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised">
         {listError ? (
@@ -170,10 +177,17 @@ export function OrdersList({
             <thead className="bg-surface-muted text-sm font-bold uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-4 py-3">Order ID</th>
+                {isSuperAdmin ? <th className="px-4 py-3">Order Date</th> : null}
                 <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Products</th>
-                <th className="px-4 py-3">Qty</th>
-                <th className="px-4 py-3">Due Date</th>
+                {isSuperAdmin ? (
+                  <th className="px-4 py-3">PO Ref</th>
+                ) : (
+                  <>
+                    <th className="px-4 py-3">Products</th>
+                    <th className="px-4 py-3">Qty</th>
+                    <th className="px-4 py-3">Due Date</th>
+                  </>
+                )}
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Action</th>
               </tr>
@@ -181,32 +195,37 @@ export function OrdersList({
             <tbody>
               {listStatus === 'loading' ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={colSpan} className="px-4 py-8 text-center text-muted">
                     Loading orders…
                   </td>
                 </tr>
               ) : visibleOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={colSpan} className="px-4 py-8 text-center text-muted">
                     No orders found.
                   </td>
                 </tr>
               ) : (
                 visibleOrders.map((order) => (
                   <tr key={order.id} className="border-t border-border">
-                    <td className="px-4 py-3 font-bold text-accent">
-                      {order.orderNo}
-                    </td>
-                    <td className="px-4 py-3">
-                      {order.customerName || '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {productSummary(order.products, order.productName)}
-                    </td>
-                    <td className="px-4 py-3 font-semibold">
-                      {order.totalQuantity}
-                    </td>
-                    <td className="px-4 py-3">{formatDueDate(order.dueDate)}</td>
+                    <td className="px-4 py-3 font-bold text-accent">{order.orderNo}</td>
+                    {isSuperAdmin ? (
+                      <td className="px-4 py-3">
+                        {formatDueDate(order.orderDate || order.createdAt)}
+                      </td>
+                    ) : null}
+                    <td className="px-4 py-3">{order.customerName || '—'}</td>
+                    {isSuperAdmin ? (
+                      <td className="px-4 py-3">{order.customerPoRef || '—'}</td>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3">
+                          {productSummary(order.products, order.productName)}
+                        </td>
+                        <td className="px-4 py-3 font-semibold">{order.totalQuantity}</td>
+                        <td className="px-4 py-3">{formatDueDate(order.dueDate)}</td>
+                      </>
+                    )}
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-sm font-bold ${statusClass(order.status)}`}
@@ -220,7 +239,7 @@ export function OrdersList({
                         onClick={() => navigate(`/orders/${order.id}`)}
                         className="min-h-10 rounded-xl border border-border bg-surface-muted px-4 text-sm font-bold hover:border-accent hover:text-accent"
                       >
-                        Open
+                        {isSuperAdmin ? 'View Details' : 'Open'}
                       </button>
                     </td>
                   </tr>
@@ -231,7 +250,7 @@ export function OrdersList({
         </div>
       </section>
 
-      {user?.role !== 'Order Creator' ? (
+      {user?.role !== 'Order Creator' && !isSuperAdmin ? (
         <p className="text-sm text-muted">
           Tip: after opening an order and creating batches, use{' '}
           <Link to="/production-planning" className="font-semibold text-accent">
