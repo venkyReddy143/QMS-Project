@@ -11,6 +11,7 @@ import { connectDB } from './config/db'
 import { adminRoutes } from './routes/adminRoutes'
 import { authRoutes } from './routes/authRoutes'
 import { batchRoutes } from './routes/batchRoutes'
+import { executionRoutes } from './routes/executionRoutes'
 import { masterRoutes } from './routes/masterRoutes'
 import { orderRoutes } from './routes/orderRoutes'
 
@@ -68,6 +69,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api', masterRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/batches', batchRoutes)
+app.use('/api', executionRoutes)
 
 // =========================
 // SERVE FRONTEND
