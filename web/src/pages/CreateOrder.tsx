@@ -13,6 +13,9 @@ interface ProductLine {
   productId: string
   quantity: string
   description: string
+  drawingNumber: string
+  remarks: string
+  rawMaterialSourcing: 'COMPANY' | 'CUSTOMER'
 }
 
 const fieldClass =
@@ -50,7 +53,15 @@ function newLineKey(): string {
 }
 
 function emptyLine(): ProductLine {
-  return { key: newLineKey(), productId: '', quantity: '', description: '' }
+  return {
+    key: newLineKey(),
+    productId: '',
+    quantity: '',
+    description: '',
+    drawingNumber: '',
+    remarks: '',
+    rawMaterialSourcing: 'COMPANY',
+  }
 }
 
 type FieldErrors = {
@@ -85,6 +96,10 @@ export function CreateOrder() {
   const lastCreated = useAppSelector((state) => state.orders.lastCreated)
 
   const [poNumber, setPoNumber] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [ownerName, setOwnerName] = useState('')
+  const [inChargeName, setInChargeName] = useState('')
+  const [orderDate, setOrderDate] = useState(todayIsoDate())
   const [lines, setLines] = useState<ProductLine[]>([emptyLine()])
   const [budget, setBudget] = useState('')
   const [estimationManual, setEstimationManual] = useState(false)
@@ -142,6 +157,10 @@ export function CreateOrder() {
 
   function resetForm() {
     setPoNumber('')
+    setCustomerName('')
+    setOwnerName('')
+    setInChargeName('')
+    setOrderDate(todayIsoDate())
     setLines([emptyLine()])
     setBudget('')
     setEstimationManual(false)
@@ -200,6 +219,9 @@ export function CreateOrder() {
         productId: line.productId,
         quantity: Number(line.quantity),
         description: line.description.trim(),
+        drawingNumber: line.drawingNumber.trim(),
+        remarks: line.remarks.trim(),
+        rawMaterialSourcing: line.rawMaterialSourcing,
       }))
       .filter((line) => line.productId && Number.isInteger(line.quantity) && line.quantity >= 1)
 
@@ -207,6 +229,10 @@ export function CreateOrder() {
 
     const payload: CreateOrderPayload = {
       customerPoRef: poNumber.trim(),
+      customerName: customerName.trim(),
+      ownerName: ownerName.trim(),
+      inChargeName: inChargeName.trim(),
+      orderDate,
       products: productsPayload,
       estimationPrice: displayEstimate,
       dueDate: targetDate,
@@ -301,7 +327,8 @@ export function CreateOrder() {
       </section>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <SectionCard title="1. Order Reference">
+        <SectionCard title="1. Order Header">
+          <div className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1.5">
             <span className={labelClass}>Order Reference / PO Number</span>
             <input
@@ -315,6 +342,41 @@ export function CreateOrder() {
               <p className="text-sm text-danger">{fieldErrors.poNumber}</p>
             ) : null}
           </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Order Date</span>
+            <input
+              type="date"
+              value={orderDate}
+              onChange={(event) => setOrderDate(event.target.value)}
+              className={fieldClass}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Customer</span>
+            <input
+              value={customerName}
+              onChange={(event) => setCustomerName(event.target.value)}
+              placeholder="Customer name"
+              className={fieldClass}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Owner</span>
+            <input
+              value={ownerName}
+              onChange={(event) => setOwnerName(event.target.value)}
+              className={fieldClass}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>In Charge</span>
+            <input
+              value={inChargeName}
+              onChange={(event) => setInChargeName(event.target.value)}
+              className={fieldClass}
+            />
+          </label>
+          </div>
         </SectionCard>
 
         <SectionCard title="2. Products & Quantity">
@@ -397,15 +459,52 @@ export function CreateOrder() {
                   </div>
 
                   <label className="block space-y-1.5 sm:col-span-3">
-                    <span className={labelClass}>Description</span>
+                    <span className={labelClass}>Product Details</span>
                     <textarea
                       value={line.description}
                       onChange={(event) =>
                         updateLine(line.key, { description: event.target.value })
                       }
-                      rows={3}
-                      placeholder="Add a description for this product"
+                      rows={2}
+                      placeholder="Product details / description"
                       className="w-full rounded-xl border border-border bg-surface-muted px-3 py-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className={labelClass}>Drawing Number</span>
+                    <input
+                      value={line.drawingNumber}
+                      onChange={(event) =>
+                        updateLine(line.key, { drawingNumber: event.target.value })
+                      }
+                      className={fieldClass}
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className={labelClass}>Raw Material Sourcing</span>
+                    <select
+                      value={line.rawMaterialSourcing}
+                      onChange={(event) =>
+                        updateLine(line.key, {
+                          rawMaterialSourcing: event.target.value as
+                            | 'COMPANY'
+                            | 'CUSTOMER',
+                        })
+                      }
+                      className={fieldClass}
+                    >
+                      <option value="COMPANY">Company</option>
+                      <option value="CUSTOMER">Customer</option>
+                    </select>
+                  </label>
+                  <label className="block space-y-1.5 sm:col-span-3">
+                    <span className={labelClass}>Line Remarks</span>
+                    <input
+                      value={line.remarks}
+                      onChange={(event) =>
+                        updateLine(line.key, { remarks: event.target.value })
+                      }
+                      className={fieldClass}
                     />
                   </label>
 

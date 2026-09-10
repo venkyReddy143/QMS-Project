@@ -12,10 +12,17 @@ import { Product } from '../models/Product'
 interface CreateOrderBody {
   customerPoRef?: string
   poNumber?: string
+  customerName?: string
+  ownerName?: string
+  inChargeName?: string
+  orderDate?: string
   products?: Array<{
     productId?: string
     quantity?: number | string
     description?: string
+    drawingNumber?: string
+    remarks?: string
+    rawMaterialSourcing?: string
   }>
   productId?: string
   totalQuantity?: number | string
@@ -51,12 +58,17 @@ function productLinesFromOrder(order: {
   estimationPrice: number
 }) {
   if (order.products && order.products.length > 0) {
-    return order.products.map((line) => ({
+    return order.products.map((line, index) => ({
       productId: line.productId.toString(),
       productCode: line.productCode,
       productName: line.productName,
+      lineNumber: line.lineNumber ?? index + 1,
       quantity: line.quantity,
       description: line.description ?? '',
+      drawingNumber: line.drawingNumber ?? '',
+      remarks: line.remarks ?? '',
+      lineStatus: line.lineStatus ?? 'OPEN',
+      rawMaterialSourcing: line.rawMaterialSourcing ?? 'COMPANY',
       uom: line.uom,
       unitRate: line.unitRate,
       estimationPrice: line.estimationPrice,
@@ -67,6 +79,7 @@ function productLinesFromOrder(order: {
         hoursPerPiece: step.hoursPerPiece,
         isCustom: step.isCustom,
         code: step.code,
+        sequence: step.sequence,
       })),
     }))
   }
@@ -78,8 +91,13 @@ function productLinesFromOrder(order: {
       productId: order.productId.toString(),
       productCode: order.productCodeSnapshot ?? '',
       productName: order.productNameSnapshot ?? '',
+      lineNumber: 1,
       quantity: order.totalQuantity,
       description: '',
+      drawingNumber: '',
+      remarks: '',
+      lineStatus: 'OPEN',
+      rawMaterialSourcing: 'COMPANY',
       uom: order.uom,
       unitRate: 0,
       estimationPrice: order.estimationPrice,
@@ -93,8 +111,11 @@ function productLinesFromOrder(order: {
 function serializeOrder(order: {
   _id: { toString(): string }
   orderNo: string
+  orderDate?: Date
   customerName?: string
   customerPoRef: string
+  ownerName?: string
+  inChargeName?: string
   products?: IOrderProductLine[]
   productId?: { toString(): string }
   productCodeSnapshot?: string
@@ -121,8 +142,11 @@ function serializeOrder(order: {
   return {
     id: order._id.toString(),
     orderNo: order.orderNo,
+    orderDate: order.orderDate ?? order.createdAt,
     customerName: order.customerName || '',
     customerPoRef: order.customerPoRef,
+    ownerName: order.ownerName ?? '',
+    inChargeName: order.inChargeName ?? '',
     products,
     productId: first?.productId ?? order.productId?.toString() ?? '',
     productCode: first?.productCode ?? order.productCodeSnapshot ?? '',
@@ -201,6 +225,7 @@ export async function createOrder(
 
     const seenProductIds = new Set<string>()
     const productLines: IOrderProductLine[] = []
+    let lineNumber = 0
 
     for (const line of incomingProducts) {
       const productId = String(line.productId ?? '').trim()
@@ -240,12 +265,22 @@ export async function createOrder(
         return
       }
 
+      lineNumber += 1
+      const sourcing = String(line.rawMaterialSourcing ?? 'COMPANY')
+        .trim()
+        .toUpperCase()
       productLines.push({
         productId: product._id,
         productCode: product.productCode,
         productName: product.name,
+        lineNumber,
         quantity,
         description: String(line.description ?? '').trim(),
+        drawingNumber: String(line.drawingNumber ?? '').trim(),
+        remarks: String(line.remarks ?? '').trim(),
+        lineStatus: 'OPEN',
+        rawMaterialSourcing:
+          sourcing === 'CUSTOMER' ? 'CUSTOMER' : 'COMPANY',
         uom: product.uom,
         unitRate: product.unitRate,
         estimationPrice: quantity * product.unitRate,
@@ -281,10 +316,23 @@ export async function createOrder(
     }
 
     const first = productLines[0]
+    const orderDateRaw = String(req.body.orderDate ?? '').trim()
+    const orderDate = orderDateRaw ? new Date(orderDateRaw) : new Date()
+    if (Number.isNaN(orderDate.getTime())) {
+      res.status(400).json({
+        success: false,
+        message: 'Enter a valid order date.',
+      })
+      return
+    }
+
     const order = await ProductionOrder.create({
       orderNo: customerPoRef,
-      customerName: '',
+      orderDate,
+      customerName: String(req.body.customerName ?? '').trim(),
       customerPoRef,
+      ownerName: String(req.body.ownerName ?? '').trim() || req.user.name,
+      inChargeName: String(req.body.inChargeName ?? '').trim(),
       products: productLines,
       productId: first.productId,
       productCodeSnapshot: first.productCode,
@@ -359,9 +407,15 @@ export async function getOrder(
 
 interface UpdateOrderPlanningBody {
   customerName?: string
+  ownerName?: string
+  inChargeName?: string
   products?: Array<{
     productId?: string
     primaryMachineId?: string
+    drawingNumber?: string
+    remarks?: string
+    rawMaterialSourcing?: string
+    lineStatus?: string
     processSteps?: Array<{
       name?: string
       code?: string
@@ -496,9 +550,34 @@ export async function updateOrderPlanning(
       line.primaryMachineId = machine._id
       line.primaryMachineType = machine.machineType
       line.processSteps = processSteps
+      if (incoming.drawingNumber !== undefined) {
+        line.drawingNumber = String(incoming.drawingNumber ?? '').trim()
+      }
+      if (incoming.remarks !== undefined) {
+        line.remarks = String(incoming.remarks ?? '').trim()
+      }
+      if (incoming.rawMaterialSourcing !== undefined) {
+        const sourcing = String(incoming.rawMaterialSourcing)
+          .trim()
+          .toUpperCase()
+        line.rawMaterialSourcing =
+          sourcing === 'CUSTOMER' ? 'CUSTOMER' : 'COMPANY'
+      }
+      if (incoming.lineStatus !== undefined) {
+        const status = String(incoming.lineStatus).trim().toUpperCase()
+        if (['OPEN', 'IN_PRODUCTION', 'COMPLETED', 'ON_HOLD'].includes(status)) {
+          line.lineStatus = status as typeof line.lineStatus
+        }
+      }
     }
 
     order.customerName = customerName
+    if (req.body.ownerName !== undefined) {
+      order.ownerName = String(req.body.ownerName ?? '').trim()
+    }
+    if (req.body.inChargeName !== undefined) {
+      order.inChargeName = String(req.body.inChargeName ?? '').trim()
+    }
     const first = order.products[0]
     order.primaryMachineType = first?.primaryMachineType ?? ''
     order.processSteps = first?.processSteps ?? []

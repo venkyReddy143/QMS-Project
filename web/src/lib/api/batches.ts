@@ -22,6 +22,24 @@ export function createBatchApi(orderId: string, payload: CreateBatchPayload) {
   )
 }
 
+export function activateBatchApi(
+  orderId: string,
+  batchId: string,
+  payload?: {
+    productionInCharge?: string
+    processMachines?: Array<{
+      processStepName: string
+      sequence: number
+      machineId?: string
+    }>
+  },
+) {
+  return post<{ success: boolean; message: string; batch?: ProductionBatch }>(
+    `/orders/${orderId}/batches/${batchId}/activate`,
+    payload ?? {},
+  )
+}
+
 export function assignBatchApi(
   orderId: string,
   batchId: string,
@@ -29,6 +47,45 @@ export function assignBatchApi(
 ) {
   return post<{ success: boolean; message: string; batch?: ProductionBatch }>(
     `/orders/${orderId}/batches/${batchId}/assign`,
+    payload,
+  )
+}
+
+export function assignSerialsApi(
+  orderId: string,
+  batchId: string,
+  payload: {
+    serialNumbers: string[]
+    shift: string
+    machineId?: string
+    operatorId?: string
+    processStepName?: string
+  },
+) {
+  return post<{ success: boolean; message: string; batch?: ProductionBatch }>(
+    `/orders/${orderId}/batches/${batchId}/assign-serials`,
+    payload,
+  )
+}
+
+export function updateBatchSerialsApi(
+  orderId: string,
+  batchId: string,
+  payload: {
+    operatorId?: string
+    shift?: string
+    machineId?: string
+    updates: Array<{
+      serialNumber: string
+      status?: string
+      completedPercent?: number
+      comments?: string
+      currentProcessStepName?: string
+    }>
+  },
+) {
+  return post<{ success: boolean; message: string; batch?: ProductionBatch }>(
+    `/orders/${orderId}/batches/${batchId}/serials`,
     payload,
   )
 }

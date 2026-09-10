@@ -13,12 +13,27 @@ export interface IBatchSerial {
   sequence: number
   status: SerialStatus
   currentProcessStepName?: string
+  completedPercent?: number
+  comments?: string
+  machineId?: Types.ObjectId
+  machineCode?: string
+  shift?: string
+  operatorId?: Types.ObjectId
+  operatorName?: string
 }
 
 export interface IBatchMachine {
   machineId: Types.ObjectId
   machineCode: string
   machineName: string
+}
+
+export interface IBatchProcessMachine {
+  processStepName: string
+  sequence: number
+  machineId?: Types.ObjectId
+  machineCode?: string
+  machineName?: string
 }
 
 export interface IBatchAssignment {
@@ -42,8 +57,12 @@ export interface IDeliveryBatch {
   orderNo: string
   productId?: Types.ObjectId
   productName?: string
+  productDescription?: string
+  drawingNumber?: string
+  lineNumber?: number
   processStepName?: string
   processStepNames: string[]
+  processMachines: IBatchProcessMachine[]
   batchNo: string
   plannedQuantity: number
   bufferQty: number
@@ -51,6 +70,7 @@ export interface IDeliveryBatch {
   targetDispatchDate: Date
   priority: OrderPriority
   status: BatchStatus
+  productionInCharge?: string
   completedQuantity: number
   dispatchedQuantity: number
   progressPercent: number
@@ -82,6 +102,20 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
       trim: true,
       default: '',
     },
+    productDescription: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    drawingNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    lineNumber: {
+      type: Number,
+      min: 1,
+    },
     processStepName: {
       type: String,
       trim: true,
@@ -89,6 +123,18 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
     },
     processStepNames: {
       type: [String],
+      default: [],
+    },
+    processMachines: {
+      type: [
+        {
+          processStepName: { type: String, required: true, trim: true },
+          sequence: { type: Number, required: true, min: 1 },
+          machineId: { type: Schema.Types.ObjectId, ref: 'Machine' },
+          machineCode: { type: String, trim: true, default: '' },
+          machineName: { type: String, trim: true, default: '' },
+        },
+      ],
       default: [],
     },
     batchNo: {
@@ -125,7 +171,12 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
       type: String,
       enum: BATCH_STATUSES,
       required: true,
-      default: 'SCHEDULED',
+      default: 'CREATED',
+    },
+    productionInCharge: {
+      type: String,
+      trim: true,
+      default: '',
     },
     completedQuantity: {
       type: Number,
@@ -187,6 +238,40 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
             default: 'QUEUED',
           },
           currentProcessStepName: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+          completedPercent: {
+            type: Number,
+            min: 0,
+            max: 100,
+            default: 0,
+          },
+          comments: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+          machineId: {
+            type: Schema.Types.ObjectId,
+            ref: 'Machine',
+          },
+          machineCode: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+          shift: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+          operatorId: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+          },
+          operatorName: {
             type: String,
             trim: true,
             default: '',

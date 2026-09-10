@@ -1,9 +1,13 @@
 import mongoose, { Schema, type Types } from 'mongoose'
 import {
+  ORDER_LINE_STATUSES,
   ORDER_PRIORITIES,
   ORDER_STATUSES,
+  RAW_MATERIAL_SOURCES,
+  type OrderLineStatus,
   type OrderPriority,
   type OrderStatus,
+  type RawMaterialSource,
 } from '../constants/enums'
 
 export interface IOrderProcessStep {
@@ -19,8 +23,13 @@ export interface IOrderProductLine {
   productId: Types.ObjectId
   productCode: string
   productName: string
+  lineNumber: number
   quantity: number
   description?: string
+  drawingNumber?: string
+  remarks?: string
+  lineStatus: OrderLineStatus
+  rawMaterialSourcing: RawMaterialSource
   uom: string
   unitRate: number
   estimationPrice: number
@@ -31,8 +40,11 @@ export interface IOrderProductLine {
 
 export interface IProductionOrder {
   orderNo: string
+  orderDate: Date
   customerName?: string
   customerPoRef: string
+  ownerName?: string
+  inChargeName?: string
   products: IOrderProductLine[]
   productId?: Types.ObjectId
   productCodeSnapshot?: string
@@ -81,6 +93,12 @@ const orderProductLineSchema = new Schema<IOrderProductLine>(
       required: true,
       trim: true,
     },
+    lineNumber: {
+      type: Number,
+      required: true,
+      min: 1,
+      default: 1,
+    },
     quantity: {
       type: Number,
       required: true,
@@ -90,6 +108,28 @@ const orderProductLineSchema = new Schema<IOrderProductLine>(
       type: String,
       trim: true,
       default: '',
+    },
+    drawingNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    remarks: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    lineStatus: {
+      type: String,
+      enum: ORDER_LINE_STATUSES,
+      required: true,
+      default: 'OPEN',
+    },
+    rawMaterialSourcing: {
+      type: String,
+      enum: RAW_MATERIAL_SOURCES,
+      required: true,
+      default: 'COMPANY',
     },
     uom: {
       type: String,
@@ -135,6 +175,11 @@ const productionOrderSchema = new Schema<IProductionOrder>(
       unique: true,
       trim: true,
     },
+    orderDate: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
     customerName: {
       type: String,
       trim: true,
@@ -144,6 +189,16 @@ const productionOrderSchema = new Schema<IProductionOrder>(
       type: String,
       required: true,
       trim: true,
+    },
+    ownerName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    inChargeName: {
+      type: String,
+      trim: true,
+      default: '',
     },
     products: {
       type: [orderProductLineSchema],

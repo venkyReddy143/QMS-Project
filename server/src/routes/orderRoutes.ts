@@ -10,6 +10,9 @@ import {
   createBatch,
   listBatches,
   logBatchTime,
+  activateBatch,
+  updateBatchSerials,
+  assignSerialsToShift,
 } from '../controllers/batchController'
 import { requireAuth } from '../middleware/auth'
 
@@ -22,5 +25,8 @@ orderRoutes.post('/:orderId/batches', createBatch)
 orderRoutes.get('/:orderId/batches', listBatches)
 orderRoutes.post('/:orderId/batches/:batchId/assign', assignBatch)
 orderRoutes.post('/:orderId/batches/:batchId/time-logs', logBatchTime)
+orderRoutes.post('/:orderId/batches/:batchId/activate', activateBatch)
+orderRoutes.post('/:orderId/batches/:batchId/serials', updateBatchSerials)
+orderRoutes.post('/:orderId/batches/:batchId/assign-serials', assignSerialsToShift)
 orderRoutes.patch('/:id/planning', updateOrderPlanning)
 orderRoutes.get('/:id', getOrder)

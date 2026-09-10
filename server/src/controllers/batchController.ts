@@ -18,6 +18,13 @@ interface BatchBody {
   productId?: string
   processStepName?: string
   machineIds?: string[] | string
+  processMachines?: Array<{
+    processStepName?: string
+    sequence?: number
+    machineId?: string
+  }>
+  deferSerials?: boolean | string
+  productionInCharge?: string
   batchNo?: string
   plannedQuantity?: number | string
   bufferQty?: number | string
@@ -117,13 +124,31 @@ function serializeBatch(
       sequence: number
       status: string
       currentProcessStepName?: string
+      completedPercent?: number
+      comments?: string
+      machineId?: { toString(): string }
+      machineCode?: string
+      shift?: string
+      operatorId?: { toString(): string }
+      operatorName?: string
     }>
     assignedMachines?: Array<{
       machineId: { toString(): string }
       machineCode: string
       machineName: string
     }>
+    processMachines?: Array<{
+      processStepName: string
+      sequence: number
+      machineId?: { toString(): string }
+      machineCode?: string
+      machineName?: string
+    }>
     processStepNames?: string[]
+    productDescription?: string
+    drawingNumber?: string
+    lineNumber?: number
+    productionInCharge?: string
     createdBy: unknown
     createdAt?: Date
     updatedAt?: Date
@@ -143,15 +168,34 @@ function serializeBatch(
     sequence: item.sequence,
     status: item.status,
     currentProcessStepName: item.currentProcessStepName ?? '',
+    completedPercent: item.completedPercent ?? 0,
+    comments: item.comments ?? '',
+    machineId: item.machineId ? String(item.machineId) : '',
+    machineCode: item.machineCode ?? '',
+    shift: item.shift ?? '',
+    operatorId: item.operatorId ? String(item.operatorId) : '',
+    operatorName: item.operatorName ?? '',
   }))
   const assignedMachines = (batch.assignedMachines ?? []).map((item) => ({
     machineId: item.machineId.toString(),
     machineCode: item.machineCode,
     machineName: item.machineName,
   }))
+  const processMachines = (batch.processMachines ?? []).map((item) => ({
+    processStepName: item.processStepName,
+    sequence: item.sequence,
+    machineId: item.machineId ? String(item.machineId) : '',
+    machineCode: item.machineCode ?? '',
+    machineName: item.machineName ?? '',
+  }))
   const processStepNames = (batch.processStepNames ?? []).filter(Boolean)
   if (batch.processStepName && !processStepNames.includes(batch.processStepName)) {
     processStepNames.push(batch.processStepName)
+  }
+  for (const item of processMachines) {
+    if (item.processStepName && !processStepNames.includes(item.processStepName)) {
+      processStepNames.push(item.processStepName)
+    }
   }
 
   return {
@@ -160,6 +204,9 @@ function serializeBatch(
     orderNo: orderNo ?? order?.orderNo ?? '',
     productId: batch.productId ? String(batch.productId) : '',
     productName: batch.productName ?? '',
+    productDescription: batch.productDescription ?? '',
+    drawingNumber: batch.drawingNumber ?? '',
+    lineNumber: batch.lineNumber ?? null,
     processStepName: batch.processStepName ?? '',
     batchNo: batch.batchNo,
     plannedQuantity: batch.plannedQuantity,
@@ -168,6 +215,7 @@ function serializeBatch(
     targetDispatchDate: batch.targetDispatchDate,
     priority: batch.priority,
     status: batch.status,
+    productionInCharge: batch.productionInCharge ?? '',
     completedQuantity: batch.completedQuantity,
     dispatchedQuantity: batch.dispatchedQuantity,
     progressPercent: batch.progressPercent,
@@ -189,11 +237,13 @@ function serializeBatch(
     serials,
     serialCount: serials.length,
     assignedMachines,
+    processMachines,
     processStepNames,
     processQtys: processWiseQtys({
       plannedQuantity: batch.plannedQuantity,
       processStepName: batch.processStepName ?? '',
       processStepNames,
+      processMachines,
       serials,
     }),
     createdBy: createdByName(batch.createdBy),
@@ -212,42 +262,103 @@ function processWiseQtys(batch: {
   plannedQuantity: number
   processStepName: string
   processStepNames: string[]
+  processMachines?: Array<{ processStepName: string; sequence: number }>
   serials: Array<{
     status: string
     currentProcessStepName?: string
   }>
 }) {
   const serials = batch.serials
-  const steps = [...batch.processStepNames]
-  if (batch.processStepName && !steps.includes(batch.processStepName)) {
-    steps.push(batch.processStepName)
+  const namedSteps =
+    batch.processMachines && batch.processMachines.length > 0
+      ? batch.processMachines
+          .slice()
+          .sort((a, b) => a.sequence - b.sequence)
+          .map((item) => item.processStepName)
+      : [...batch.processStepNames]
+  if (batch.processStepName && !namedSteps.includes(batch.processStepName)) {
+    namedSteps.push(batch.processStepName)
   }
 
   function stepOf(serial: { status: string; currentProcessStepName?: string }) {
     if (serial.currentProcessStepName) return serial.currentProcessStepName
-    if (serial.status === 'COMPLETED') return ''
-    return batch.processStepName || ''
+    if (
+      serial.status === 'COMPLETED' ||
+      serial.status === 'FULL_READY' ||
+      serial.status === 'QC_REJECTED'
+    ) {
+      return ''
+    }
+    return batch.processStepName || namedSteps[0] || ''
   }
 
-  const notStarted = serials.filter((serial) => {
-    if (serial.status === 'COMPLETED') return false
-    return stepOf(serial) === ''
-  }).length
+  const notStarted = serials.filter(
+    (serial) =>
+      serial.status === 'QUEUED' &&
+      !serial.currentProcessStepName &&
+      !batch.processStepName &&
+      namedSteps.length === 0,
+  ).length
+
+  const stepsSource =
+    namedSteps.length > 0
+      ? namedSteps
+      : batch.processStepName
+        ? [batch.processStepName]
+        : ['Whole product']
+  const noNamedSteps = namedSteps.length === 0
 
   return {
     total: batch.plannedQuantity,
     notStarted,
-    steps: steps.map((name) => ({
-      name,
-      inProgress: serials.filter(
-        (serial) => serial.status === 'IN_PROGRESS' && stepOf(serial) === name,
-      ).length,
-      queue: serials.filter(
+    qcRejected: serials.filter((serial) => serial.status === 'QC_REJECTED').length,
+    fullReady: serials.filter(
+      (serial) =>
+        serial.status === 'FULL_READY' || serial.status === 'COMPLETED',
+    ).length,
+    steps: stepsSource.map((name, index) => {
+      const sequence =
+        batch.processMachines?.find((item) => item.processStepName === name)
+          ?.sequence ?? index + 1
+      const queue = serials.filter(
         (serial) =>
           (serial.status === 'QUEUED' || serial.status === 'ON_HOLD') &&
-          stepOf(serial) === name,
-      ).length,
-    })),
+          (noNamedSteps || stepOf(serial) === name),
+      ).length
+      const inProgress = serials.filter(
+        (serial) =>
+          serial.status === 'IN_PROGRESS' &&
+          (noNamedSteps || stepOf(serial) === name),
+      ).length
+      const completed = serials.filter(
+        (serial) =>
+          (serial.status === 'COMPLETED' || serial.status === 'FULL_READY') &&
+          (noNamedSteps ||
+            serial.currentProcessStepName === name ||
+            (!serial.currentProcessStepName &&
+              name === stepsSource[stepsSource.length - 1])),
+      ).length
+      const qcRejected = serials.filter(
+        (serial) =>
+          serial.status === 'QC_REJECTED' &&
+          (noNamedSteps || stepOf(serial) === name),
+      ).length
+      let status = 'Not started'
+      if (qcRejected > 0) status = 'QC rejected'
+      else if (inProgress > 0) status = 'In progress'
+      else if (queue > 0) status = 'Queue'
+      else if (completed > 0) status = 'Completed'
+      return {
+        name,
+        sequence,
+        status,
+        queue,
+        inProgress,
+        qcRejected,
+        completed,
+        fullReady: completed,
+      }
+    }),
   }
 }
 
@@ -410,17 +521,36 @@ export async function createBatch(
     const totalBatchQty =
       toNumber(req.body.totalBatchQty) ?? plannedQuantity + bufferQty
 
-    const serials = buildBatchSerials({
-      orderNo: order.orderNo,
-      batchNo,
-      quantity: plannedQuantity,
-      startSequence: await nextSerialSequence(order._id),
-      currentProcessStepName: processStepName,
-    })
+    const deferSerials =
+      req.body.deferSerials === true ||
+      req.body.deferSerials === 'true' ||
+      String(req.body.status ?? '').toUpperCase() === 'CREATED'
+    const firstProcessName =
+      processStepName ||
+      (productLine?.processSteps ?? [])[0]?.name ||
+      ''
+
+    const serials = deferSerials
+      ? []
+      : buildBatchSerials({
+          orderNo: order.orderNo,
+          batchNo,
+          quantity: plannedQuantity,
+          startSequence: await nextSerialSequence(order._id),
+          currentProcessStepName: firstProcessName,
+        })
 
     const processStepNames = (productLine?.processSteps ?? [])
       .map((step) => String(step.name ?? '').trim())
       .filter(Boolean)
+
+    const processMachines = (productLine?.processSteps ?? []).map((step) => ({
+      processStepName: step.name,
+      sequence: step.sequence,
+      machineId: productLine?.primaryMachineId,
+      machineCode: '',
+      machineName: '',
+    }))
 
     const requestedMachineIds = Array.isArray(req.body.machineIds)
       ? req.body.machineIds
@@ -447,21 +577,33 @@ export async function createBatch(
       machineCode: machine.machineCode,
       machineName: machine.name,
     }))
+    if (machines[0] && processMachines.length > 0) {
+      for (const item of processMachines) {
+        item.machineId = machines[0]._id
+        item.machineCode = machines[0].machineCode
+        item.machineName = machines[0].name
+      }
+    }
 
     const batch = await DeliveryBatch.create({
       orderId: order._id,
       orderNo: order.orderNo,
       productId: productLine?.productId,
       productName: productLine?.productName ?? order.productNameSnapshot ?? '',
+      productDescription: productLine?.description ?? '',
+      drawingNumber: productLine?.drawingNumber ?? '',
+      lineNumber: productLine?.lineNumber,
       processStepName,
       processStepNames,
+      processMachines,
       batchNo,
       plannedQuantity,
       bufferQty,
       totalBatchQty,
       targetDispatchDate,
       priority: mapPriority(req.body.priority),
-      status: mapStatus(req.body.status) ?? 'SCHEDULED',
+      status: mapStatus(req.body.status) ?? (deferSerials ? 'CREATED' : 'SCHEDULED'),
+      productionInCharge: String(req.body.productionInCharge ?? '').trim(),
       completedQuantity: 0,
       dispatchedQuantity: 0,
       progressPercent: 0,
@@ -476,12 +618,18 @@ export async function createBatch(
       order.status = 'IN_PRODUCTION'
       await order.save()
     }
+    if (productLine) {
+      productLine.lineStatus = 'IN_PRODUCTION'
+      await order.save()
+    }
 
     const populated = await batch.populate('createdBy', 'name')
 
     res.status(201).json({
       success: true,
-      message: `Batch ${batchNo} created with ${serials.length} serial numbers.`,
+      message: deferSerials
+        ? `Batch ${batchNo} created. Activate to generate serial numbers.`
+        : `Batch ${batchNo} created with ${serials.length} serial numbers.`,
       batch: serializeBatch(populated, order.orderNo),
       allocation: {
         orderQty: order.totalQuantity,
@@ -873,6 +1021,376 @@ export async function logBatchTime(
     res.json({
       success: true,
       message: 'Time logged.',
+      batch: serializeBatch(batch, batch.orderNo),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function activateBatch(
+  req: Request<{ orderId?: string; batchId?: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      })
+      return
+    }
+
+    const batchId = String(req.params.batchId ?? req.body.batchId ?? '').trim()
+    if (!batchId || !looksLikeObjectId(batchId)) {
+      res.status(400).json({ success: false, message: 'Batch ID is required.' })
+      return
+    }
+
+    const batch = await DeliveryBatch.findById(batchId)
+    if (!batch) {
+      res.status(404).json({ success: false, message: 'Batch not found.' })
+      return
+    }
+
+    if (batch.status !== 'CREATED' && (batch.serials?.length ?? 0) > 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Batch is already active with serial numbers.',
+      })
+      return
+    }
+
+    const processMachines = Array.isArray(req.body.processMachines)
+      ? req.body.processMachines
+      : []
+    if (processMachines.length > 0) {
+      const nextMachines = []
+      for (const item of processMachines) {
+        const processStepName = String(item.processStepName ?? '').trim()
+        const sequence: number =
+          toNumber(item.sequence) ?? nextMachines.length + 1
+        const machineId = String(item.machineId ?? '').trim()
+        if (!processStepName) continue
+        let machineCode = ''
+        let machineName = ''
+        let machineObjectId: mongoose.Types.ObjectId | undefined
+        if (machineId && looksLikeObjectId(machineId)) {
+          const machine = await Machine.findById(machineId)
+          if (machine) {
+            machineObjectId = machine._id
+            machineCode = machine.machineCode
+            machineName = machine.name
+          }
+        }
+        nextMachines.push({
+          processStepName,
+          sequence,
+          machineId: machineObjectId,
+          machineCode,
+          machineName,
+        })
+      }
+      if (nextMachines.length > 0) {
+        batch.processMachines = nextMachines
+        batch.processStepNames = nextMachines.map((item) => item.processStepName)
+      }
+    }
+
+    if (req.body.productionInCharge !== undefined) {
+      batch.productionInCharge = String(req.body.productionInCharge ?? '').trim()
+    }
+
+    const firstStep =
+      batch.processMachines[0]?.processStepName ||
+      batch.processStepNames[0] ||
+      batch.processStepName ||
+      ''
+
+    if ((batch.serials?.length ?? 0) === 0) {
+      batch.serials = buildBatchSerials({
+        orderNo: batch.orderNo,
+        batchNo: batch.batchNo,
+        quantity: batch.plannedQuantity,
+        startSequence: await nextSerialSequence(batch.orderId),
+        currentProcessStepName: firstStep,
+      })
+    } else {
+      for (const serial of batch.serials) {
+        if (!serial.currentProcessStepName) {
+          serial.currentProcessStepName = firstStep
+        }
+      }
+    }
+
+    batch.status = 'ACTIVE'
+    await batch.save()
+    const populated = await batch.populate('createdBy', 'name')
+
+    res.json({
+      success: true,
+      message: `Batch ${batch.batchNo} activated with ${batch.serials.length} serial records.`,
+      batch: serializeBatch(populated, batch.orderNo),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function updateBatchSerials(
+  req: Request<{ orderId?: string; batchId?: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      })
+      return
+    }
+
+    const batchId = String(req.params.batchId ?? '').trim()
+    const updates = Array.isArray(req.body.updates) ? req.body.updates : []
+    if (!batchId || !looksLikeObjectId(batchId)) {
+      res.status(400).json({ success: false, message: 'Batch ID is required.' })
+      return
+    }
+    if (updates.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Select at least one serial to update.',
+      })
+      return
+    }
+
+    const batch = await DeliveryBatch.findById(batchId)
+    if (!batch) {
+      res.status(404).json({ success: false, message: 'Batch not found.' })
+      return
+    }
+
+    const employeeId = String(req.body.operatorId ?? req.user._id).trim()
+    const employee = await User.findById(employeeId)
+    const shift = String(req.body.shift ?? '').trim().toUpperCase()
+    const machineId = String(req.body.machineId ?? '').trim()
+    let machineCode = ''
+    if (machineId && looksLikeObjectId(machineId)) {
+      const machine = await Machine.findById(machineId)
+      machineCode = machine?.machineCode ?? ''
+    }
+
+    const order = await ProductionOrder.findById(batch.orderId).lean()
+    const productLine = order?.products?.find(
+      (line) =>
+        batch.productId &&
+        line.productId &&
+        String(line.productId) === String(batch.productId),
+    )
+    const hoursByStep = new Map(
+      (productLine?.processSteps ?? order?.processSteps ?? []).map((step) => [
+        step.name,
+        Number(step.hoursPerPiece) || 0,
+      ]),
+    )
+
+    const bySerial = new Map(
+      updates.map((item: { serialNumber?: string }) => [
+        String(item.serialNumber ?? '').trim(),
+        item,
+      ]),
+    )
+
+    let derivedHours = 0
+    for (const serial of batch.serials) {
+      const update = bySerial.get(serial.serialNumber)
+      if (!update) continue
+      const previousPercent = Number(serial.completedPercent) || 0
+      const status = String(
+        (update as { status?: string }).status ?? serial.status,
+      )
+        .trim()
+        .toUpperCase()
+      if (
+        [
+          'QUEUED',
+          'IN_PROGRESS',
+          'COMPLETED',
+          'ON_HOLD',
+          'QC_REJECTED',
+          'FULL_READY',
+        ].includes(status)
+      ) {
+        serial.status = status as typeof serial.status
+      }
+      if ((update as { currentProcessStepName?: string }).currentProcessStepName !== undefined) {
+        serial.currentProcessStepName = String(
+          (update as { currentProcessStepName?: string }).currentProcessStepName ?? '',
+        ).trim()
+      }
+      const percent = toNumber((update as { completedPercent?: number }).completedPercent)
+      if (percent !== undefined) {
+        serial.completedPercent = Math.max(0, Math.min(100, percent))
+      }
+      if (status === 'COMPLETED' || status === 'FULL_READY') {
+        serial.completedPercent = 100
+      }
+      if ((update as { comments?: string }).comments !== undefined) {
+        serial.comments = String((update as { comments?: string }).comments ?? '').trim()
+      }
+      if (shift) serial.shift = shift
+      if (machineCode) {
+        serial.machineCode = machineCode
+        if (looksLikeObjectId(machineId)) {
+          serial.machineId = new mongoose.Types.ObjectId(machineId)
+        }
+      }
+      if (employee) {
+        serial.operatorId = employee._id
+        serial.operatorName = employee.name
+      }
+
+      const stepName =
+        serial.currentProcessStepName ||
+        batch.processStepName ||
+        batch.processStepNames[0] ||
+        ''
+      const hoursPerPiece = hoursByStep.get(stepName) ?? 0
+      const nextPercent = Number(serial.completedPercent) || 0
+      const delta = Math.max(0, nextPercent - previousPercent)
+      derivedHours += (delta / 100) * hoursPerPiece
+    }
+
+    if (employee && derivedHours > 0) {
+      batch.timeLogs.push({
+        employeeId: employee._id,
+        employeeName: employee.name,
+        shift: shift || 'A',
+        hours: Math.round(derivedHours * 100) / 100,
+        note: 'Derived from completed %',
+        loggedAt: new Date(),
+      })
+    }
+
+    const completed = batch.serials.filter(
+      (item) => item.status === 'COMPLETED' || item.status === 'FULL_READY',
+    ).length
+    batch.completedQuantity = completed
+    batch.progressPercent = Math.round(
+      (completed / Math.max(1, batch.plannedQuantity)) * 100,
+    )
+    await batch.save()
+
+    res.json({
+      success: true,
+      message:
+        derivedHours > 0
+          ? `Serial progress updated (${Math.round(derivedHours * 100) / 100}h derived).`
+          : 'Serial progress updated.',
+      batch: serializeBatch(batch, batch.orderNo),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function assignSerialsToShift(
+  req: Request<{ orderId?: string; batchId?: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      })
+      return
+    }
+
+    const batchId = String(req.params.batchId ?? '').trim()
+    const serialNumbers = Array.isArray(req.body.serialNumbers)
+      ? req.body.serialNumbers.map((item: string) => String(item).trim())
+      : []
+    const shift = String(req.body.shift ?? '').trim().toUpperCase()
+    const machineId = String(req.body.machineId ?? '').trim()
+    const operatorId = String(req.body.operatorId ?? '').trim()
+    const processStepName = String(req.body.processStepName ?? '').trim()
+
+    if (!batchId || serialNumbers.length === 0 || !shift) {
+      res.status(400).json({
+        success: false,
+        message: 'Batch, serials, and shift are required.',
+      })
+      return
+    }
+
+    const batch = await DeliveryBatch.findById(batchId)
+    if (!batch) {
+      res.status(404).json({ success: false, message: 'Batch not found.' })
+      return
+    }
+
+    let machineCode = ''
+    let machineObjectId: mongoose.Types.ObjectId | undefined
+    if (machineId && looksLikeObjectId(machineId)) {
+      const machine = await Machine.findById(machineId)
+      if (machine) {
+        machineObjectId = machine._id
+        machineCode = machine.machineCode
+      }
+    }
+
+    let operatorName = ''
+    let operatorObjectId: mongoose.Types.ObjectId | undefined
+    if (operatorId && looksLikeObjectId(operatorId)) {
+      const operator = await User.findById(operatorId)
+      if (operator) {
+        operatorObjectId = operator._id
+        operatorName = operator.name
+      }
+    }
+
+    const selected = new Set(serialNumbers)
+    for (const serial of batch.serials) {
+      if (!selected.has(serial.serialNumber)) continue
+      serial.shift = shift
+      if (processStepName) serial.currentProcessStepName = processStepName
+      if (machineObjectId) {
+        serial.machineId = machineObjectId
+        serial.machineCode = machineCode
+      }
+      if (operatorObjectId) {
+        serial.operatorId = operatorObjectId
+        serial.operatorName = operatorName
+      }
+      if (serial.status === 'QUEUED') {
+        // keep queued until operator starts
+      }
+    }
+
+    if (operatorObjectId && operatorName) {
+      const already = batch.assignments.some(
+        (item) =>
+          item.employeeId.toString() === operatorObjectId!.toString() &&
+          item.shift === shift,
+      )
+      if (!already) {
+        batch.assignments.push({
+          employeeId: operatorObjectId,
+          employeeName: operatorName,
+          shift,
+          assignedAt: new Date(),
+        })
+      }
+    }
+
+    await batch.save()
+    res.json({
+      success: true,
+      message: 'Serials assigned to machine and shift.',
       batch: serializeBatch(batch, batch.orderNo),
     })
   } catch (error) {
