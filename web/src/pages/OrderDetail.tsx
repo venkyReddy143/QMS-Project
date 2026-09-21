@@ -51,6 +51,10 @@ function formatDate(value: string | undefined): string {
 
 function statusLabel(status: string): string {
   switch (status) {
+    case 'OPEN':
+      return 'Open'
+    case 'CLOSED':
+      return 'Close'
     case 'DRAFT':
       return 'Draft'
     case 'RELEASED':

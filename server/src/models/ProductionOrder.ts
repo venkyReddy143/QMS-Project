@@ -219,7 +219,8 @@ const productionOrderSchema = new Schema<IProductionOrder>(
     totalQuantity: {
       type: Number,
       required: true,
-      min: 1,
+      min: 0,
+      default: 0,
     },
     uom: {
       type: String,

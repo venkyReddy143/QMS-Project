@@ -3,6 +3,8 @@ import type {
   CreateOrderResponse,
   GetOrderResponse,
   ListOrdersResponse,
+  UpdateOrderDetailsPayload,
+  UpdateOrderDetailsResponse,
   UpdateOrderPlanningPayload,
   UpdateOrderPlanningResponse,
 } from '../../types/orders'
@@ -15,12 +17,28 @@ export function createOrderApi(payload: CreateOrderPayload) {
   )
 }
 
+export function fetchNextOrderNoApi() {
+  return get<{ success: boolean; orderNo?: string; message?: string }>(
+    '/orders/next-order-no',
+  )
+}
+
 export function fetchOrdersApi() {
   return get<ListOrdersResponse>('/orders')
 }
 
 export function fetchOrderApi(orderId: string) {
   return get<GetOrderResponse>(`/orders/${orderId}`)
+}
+
+export function updateOrderDetailsApi(
+  orderId: string,
+  payload: UpdateOrderDetailsPayload,
+) {
+  return patch<UpdateOrderDetailsResponse, UpdateOrderDetailsPayload>(
+    `/orders/${orderId}/details`,
+    payload,
+  )
 }
 
 export function updateOrderPlanningApi(

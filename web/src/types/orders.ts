@@ -14,16 +14,32 @@ export interface CreateOrderProductPayload {
 
 export interface CreateOrderPayload {
   customerPoRef: string
+  orderNo?: string
   customerName?: string
   ownerName?: string
   inChargeName?: string
   orderDate?: string
-  products: CreateOrderProductPayload[]
+  status?: 'OPEN' | 'CLOSED' | string
+  products?: CreateOrderProductPayload[]
   budget?: number
   estimationPrice?: number
-  dueDate: string
-  priority: OrderPriorityApi
-  notes: string
+  dueDate?: string
+  priority?: OrderPriorityApi
+  notes?: string
+}
+
+export interface UpdateOrderDetailsPayload {
+  products?: CreateOrderProductPayload[]
+  dueDate?: string
+  priority?: OrderPriorityApi
+  notes?: string
+  status?: 'OPEN' | 'CLOSED' | string
+}
+
+export interface UpdateOrderDetailsResponse {
+  success: boolean
+  message: string
+  order?: ProductionOrder
 }
 
 export interface OrderProcessStep {

@@ -3,6 +3,8 @@ import {
   createOrder,
   getOrder,
   listOrders,
+  nextOrderNo,
+  updateOrderDetails,
   updateOrderPlanning,
 } from '../controllers/orderController'
 import {
@@ -20,6 +22,7 @@ export const orderRoutes = Router()
 
 orderRoutes.use(requireAuth)
 orderRoutes.post('/createOrder', createOrder)
+orderRoutes.get('/next-order-no', nextOrderNo)
 orderRoutes.get('/', listOrders)
 orderRoutes.post('/:orderId/batches', createBatch)
 orderRoutes.get('/:orderId/batches', listBatches)
@@ -28,5 +31,6 @@ orderRoutes.post('/:orderId/batches/:batchId/time-logs', logBatchTime)
 orderRoutes.post('/:orderId/batches/:batchId/activate', activateBatch)
 orderRoutes.post('/:orderId/batches/:batchId/serials', updateBatchSerials)
 orderRoutes.post('/:orderId/batches/:batchId/assign-serials', assignSerialsToShift)
+orderRoutes.patch('/:id/details', updateOrderDetails)
 orderRoutes.patch('/:id/planning', updateOrderPlanning)
 orderRoutes.get('/:id', getOrder)

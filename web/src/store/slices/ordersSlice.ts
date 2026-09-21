@@ -3,11 +3,13 @@ import {
   createOrderApi,
   fetchOrderApi,
   fetchOrdersApi,
+  updateOrderDetailsApi,
   updateOrderPlanningApi,
 } from '../../lib/api/orders'
 import type {
   CreateOrderPayload,
   ProductionOrder,
+  UpdateOrderDetailsPayload,
   UpdateOrderPlanningPayload,
 } from '../../types/orders'
 
@@ -23,6 +25,8 @@ interface OrdersState {
   createStatus: LoadStatus
   createError: string | null
   lastCreated: ProductionOrder | null
+  detailsStatus: LoadStatus
+  detailsError: string | null
   planningStatus: LoadStatus
   planningError: string | null
 }
@@ -37,6 +41,8 @@ const initialState: OrdersState = {
   createStatus: 'idle',
   createError: null,
   lastCreated: null,
+  detailsStatus: 'idle',
+  detailsError: null,
   planningStatus: 'idle',
   planningError: null,
 }
@@ -112,6 +118,33 @@ export const createOrder = createAsyncThunk(
   },
 )
 
+export const updateOrderDetails = createAsyncThunk(
+  'orders/updateOrderDetails',
+  async (
+    {
+      orderId,
+      payload,
+    }: { orderId: string; payload: UpdateOrderDetailsPayload },
+    { rejectWithValue },
+  ) => {
+    try {
+      const response = await updateOrderDetailsApi(orderId, payload)
+      if (!response.success || !response.order) {
+        return rejectWithValue(
+          response.message || 'Failed to update order details.',
+        )
+      }
+      return response.order
+    } catch (error) {
+      return rejectWithValue(
+        error instanceof Error
+          ? error.message
+          : 'Failed to update order details.',
+      )
+    }
+  },
+)
+
 const ordersSlice = createSlice({
   name: 'orders',
   initialState,
@@ -120,6 +153,8 @@ const ordersSlice = createSlice({
       state.createStatus = 'idle'
       state.createError = null
       state.lastCreated = null
+      state.detailsStatus = 'idle'
+      state.detailsError = null
     },
     clearOrderDetail(state) {
       state.current = null
@@ -173,6 +208,25 @@ const ordersSlice = createSlice({
         state.createStatus = 'failed'
         state.createError =
           (action.payload as string) || 'Failed to create order.'
+      })
+      .addCase(updateOrderDetails.pending, (state) => {
+        state.detailsStatus = 'loading'
+        state.detailsError = null
+      })
+      .addCase(updateOrderDetails.fulfilled, (state, action) => {
+        state.detailsStatus = 'succeeded'
+        state.detailsError = null
+        state.lastCreated = action.payload
+        state.current = action.payload
+        const index = state.items.findIndex((item) => item.id === action.payload.id)
+        if (index >= 0) {
+          state.items[index] = action.payload
+        }
+      })
+      .addCase(updateOrderDetails.rejected, (state, action) => {
+        state.detailsStatus = 'failed'
+        state.detailsError =
+          (action.payload as string) || 'Failed to update order details.'
       })
       .addCase(updateOrderPlanning.pending, (state) => {
         state.planningStatus = 'loading'

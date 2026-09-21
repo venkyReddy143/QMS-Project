@@ -5,6 +5,8 @@ export const PRODUCT_TYPES = ['PRODUCT', 'SPARE', 'TOOL'] as const
 export type ProductType = (typeof PRODUCT_TYPES)[number]
 
 export const ORDER_STATUSES = [
+  'OPEN',
+  'CLOSED',
   'DRAFT',
   'RELEASED',
   'IN_PRODUCTION',
