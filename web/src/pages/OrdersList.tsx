@@ -8,6 +8,7 @@ import { fetchOrders } from '../store/slices/ordersSlice'
 import type { OrderProductLine } from '../types/orders'
 
 const ACTIVE_ORDER_STATUSES = new Set([
+  'OPEN',
   'DRAFT',
   'RELEASED',
   'IN_PRODUCTION',
@@ -20,6 +21,10 @@ export type OrderListView = 'active' | 'all'
 
 function statusLabel(status: string): string {
   switch (status) {
+    case 'OPEN':
+      return 'Open'
+    case 'CLOSED':
+      return 'Close'
     case 'DRAFT':
       return 'Draft'
     case 'RELEASED':
@@ -42,8 +47,12 @@ function statusClass(status: string): string {
   const label = statusLabel(status)
   if (label === 'In Production') return 'bg-sky-100 text-sky-800'
   if (label === 'Ready to Dispatch') return 'bg-emerald-100 text-emerald-800'
-  if (label === 'Created' || label === 'Draft') return 'bg-violet-100 text-violet-800'
-  if (label === 'On Hold' || label === 'Cancelled') return 'bg-red-100 text-danger'
+  if (label === 'Open' || label === 'Created' || label === 'Draft') {
+    return 'bg-violet-100 text-violet-800'
+  }
+  if (label === 'Close' || label === 'On Hold' || label === 'Cancelled') {
+    return 'bg-red-100 text-danger'
+  }
   return 'bg-amber-100 text-amber-800'
 }
 
@@ -236,7 +245,16 @@ export function OrdersList({
                     <td className="px-4 py-3">
                       <button
                         type="button"
-                        onClick={() => navigate(`/orders/${order.id}`)}
+                        onClick={() => {
+                          const hasProducts =
+                            (order.products?.length ?? 0) > 0 ||
+                            Boolean(order.productId)
+                          if (!hasProducts) {
+                            navigate(`/create-order?orderId=${order.id}`)
+                            return
+                          }
+                          navigate(`/orders/${order.id}`)
+                        }}
                         className="min-h-10 rounded-xl border border-border bg-surface-muted px-4 text-sm font-bold hover:border-accent hover:text-accent"
                       >
                         {isSuperAdmin ? 'View Details' : 'Open'}
