@@ -77,6 +77,7 @@ async function buildProductLines(
     drawingNumber?: string
     remarks?: string
     rawMaterialSourcing?: string
+    lineStatus?: string
   }>,
 ): Promise<{ lines: IOrderProductLine[]; error?: string }> {
   const seenProductIds = new Set<string>()
@@ -115,6 +116,9 @@ async function buildProductLines(
     const sourcing = String(line.rawMaterialSourcing ?? 'COMPANY')
       .trim()
       .toUpperCase()
+    const statusRaw = String(line.lineStatus ?? 'OPEN').trim().toUpperCase()
+    const lineStatus =
+      statusRaw === 'CLOSE' || statusRaw === 'CLOSED' ? 'CLOSED' : 'OPEN'
     productLines.push({
       productId: product._id,
       productCode: product.productCode,
@@ -124,7 +128,7 @@ async function buildProductLines(
       description: String(line.description ?? '').trim(),
       drawingNumber: String(line.drawingNumber ?? '').trim(),
       remarks: String(line.remarks ?? '').trim(),
-      lineStatus: 'OPEN',
+      lineStatus,
       rawMaterialSourcing: sourcing === 'CUSTOMER' ? 'CUSTOMER' : 'COMPANY',
       uom: product.uom,
       unitRate: product.unitRate,
@@ -723,7 +727,11 @@ export async function updateOrderPlanning(
       }
       if (incoming.lineStatus !== undefined) {
         const status = String(incoming.lineStatus).trim().toUpperCase()
-        if (['OPEN', 'IN_PRODUCTION', 'COMPLETED', 'ON_HOLD'].includes(status)) {
+        if (
+          ['OPEN', 'CLOSED', 'IN_PRODUCTION', 'COMPLETED', 'ON_HOLD'].includes(
+            status,
+          )
+        ) {
           line.lineStatus = status as typeof line.lineStatus
         }
       }
