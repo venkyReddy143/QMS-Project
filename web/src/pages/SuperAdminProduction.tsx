@@ -82,15 +82,16 @@ export function SuperAdminProduction() {
 
   useEffect(() => {
     if (!menuBatchId) return
+    const openBatchId = menuBatchId
     function handlePointerDown(event: MouseEvent) {
       const target = event.target as Node
       if (menuRef.current?.contains(target)) return
-      const openButton = buttonRefs.current[menuBatchId]
+      const openButton = buttonRefs.current[openBatchId]
       if (openButton?.contains(target)) return
       closeMenu()
     }
     function handleReposition() {
-      const button = buttonRefs.current[menuBatchId]
+      const button = buttonRefs.current[openBatchId]
       if (!button) {
         closeMenu()
         return
