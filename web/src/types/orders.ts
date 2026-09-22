@@ -1,7 +1,12 @@
 export type OrderPriorityApi = 'NORMAL' | 'HIGH' | 'URGENT'
 
 export type RawMaterialSourcing = 'COMPANY' | 'CUSTOMER'
-export type OrderLineStatusApi = 'OPEN' | 'IN_PRODUCTION' | 'COMPLETED' | 'ON_HOLD'
+export type OrderLineStatusApi =
+  | 'OPEN'
+  | 'CLOSED'
+  | 'IN_PRODUCTION'
+  | 'COMPLETED'
+  | 'ON_HOLD'
 
 export interface CreateOrderProductPayload {
   productId: string
@@ -10,6 +15,7 @@ export interface CreateOrderProductPayload {
   drawingNumber?: string
   remarks?: string
   rawMaterialSourcing?: RawMaterialSourcing
+  lineStatus?: 'OPEN' | 'CLOSED' | OrderLineStatusApi
 }
 
 export interface CreateOrderPayload {

@@ -66,6 +66,7 @@ export type SerialStatus = (typeof SERIAL_STATUSES)[number]
 
 export const ORDER_LINE_STATUSES = [
   'OPEN',
+  'CLOSED',
   'IN_PRODUCTION',
   'COMPLETED',
   'ON_HOLD',

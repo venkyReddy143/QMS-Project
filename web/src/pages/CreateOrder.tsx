@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { CheckCircle2, PlusCircle, Trash2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { fetchEmployeesApi } from '../lib/api/batches'
 import { fetchNextOrderNoApi } from '../lib/api/orders'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { fetchProducts } from '../store/slices/mastersSlice'
@@ -10,7 +11,11 @@ import {
   fetchOrder,
   updateOrderDetails,
 } from '../store/slices/ordersSlice'
-import type { OrderPriorityApi, ProductionOrder } from '../types/orders'
+import type {
+  EmployeeOption,
+  OrderPriorityApi,
+  ProductionOrder,
+} from '../types/orders'
 
 type Priority = 'Normal' | 'High' | 'Urgent'
 type HeaderStatus = 'OPEN' | 'CLOSED'
@@ -24,6 +29,7 @@ interface ProductLine {
   drawingNumber: string
   remarks: string
   rawMaterialSourcing: 'COMPANY' | 'CUSTOMER'
+  lineStatus: 'OPEN' | 'CLOSED'
 }
 
 const fieldClass =
@@ -69,6 +75,7 @@ function emptyLine(): ProductLine {
     drawingNumber: '',
     remarks: '',
     rawMaterialSourcing: 'COMPANY',
+    lineStatus: 'OPEN',
   }
 }
 
@@ -109,7 +116,11 @@ export function CreateOrder() {
   const [orderIdLoading, setOrderIdLoading] = useState(true)
   const [customerName, setCustomerName] = useState('')
   const [ownerName, setOwnerName] = useState('')
+  const [inChargeId, setInChargeId] = useState('')
   const [inChargeName, setInChargeName] = useState('')
+  const [users, setUsers] = useState<EmployeeOption[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [usersError, setUsersError] = useState<string | null>(null)
   const [orderDate, setOrderDate] = useState(todayIsoDate())
   const [headerStatus, setHeaderStatus] = useState<HeaderStatus>('OPEN')
   const [lines, setLines] = useState<ProductLine[]>([emptyLine()])
@@ -140,7 +151,47 @@ export function CreateOrder() {
 
   useEffect(() => {
     void dispatch(fetchProducts())
+    let active = true
+    setUsersLoading(true)
+    setUsersError(null)
+    void fetchEmployeesApi()
+      .then((response) => {
+        if (!active) return
+        setUsers(response.employees ?? [])
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        setUsers([])
+        setUsersError(
+          error instanceof Error ? error.message : 'Failed to load users.',
+        )
+      })
+      .finally(() => {
+        if (active) setUsersLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [dispatch])
+
+  function handleInChargeChange(userId: string) {
+    setInChargeId(userId)
+    const selected = users.find((user) => user.id === userId)
+    setInChargeName(selected?.name ?? '')
+  }
+
+  useEffect(() => {
+    if (!inChargeName.trim() || users.length === 0) return
+    if (inChargeId) return
+    const match = users.find(
+      (user) =>
+        user.name.trim().toLowerCase() === inChargeName.trim().toLowerCase(),
+    )
+    if (match) {
+      setInChargeId(match.id)
+      setInChargeName(match.name)
+    }
+  }, [users, inChargeName, inChargeId])
 
   useEffect(() => {
     if (!resumeOrderId) {
@@ -169,6 +220,7 @@ export function CreateOrder() {
         setPoNumber(order.customerPoRef || '')
         setCustomerName(order.customerName || '')
         setOwnerName(order.ownerName || '')
+        setInChargeId('')
         setInChargeName(order.inChargeName || '')
         setOrderDate(
           order.orderDate
@@ -233,6 +285,7 @@ export function CreateOrder() {
     setPoNumber('')
     setCustomerName('')
     setOwnerName('')
+    setInChargeId('')
     setInChargeName('')
     setOrderDate(todayIsoDate())
     setHeaderStatus('OPEN')
@@ -300,6 +353,7 @@ export function CreateOrder() {
         drawingNumber: line.drawingNumber.trim(),
         remarks: line.remarks.trim(),
         rawMaterialSourcing: line.rawMaterialSourcing,
+        lineStatus: line.lineStatus,
       }))
       .filter(
         (line) =>
@@ -545,11 +599,24 @@ export function CreateOrder() {
               </label>
               <label className="block space-y-1.5">
                 <span className={labelClass}>In Charge</span>
-                <input
-                  value={inChargeName}
-                  onChange={(event) => setInChargeName(event.target.value)}
+                <select
+                  value={inChargeId}
+                  onChange={(event) => handleInChargeChange(event.target.value)}
+                  disabled={usersLoading}
                   className={fieldClass}
-                />
+                >
+                  <option value="">
+                    {usersLoading ? 'Loading users…' : 'Select user'}
+                  </option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} ({user.employeeCode})
+                    </option>
+                  ))}
+                </select>
+                {usersError ? (
+                  <p className="text-sm text-danger">{usersError}</p>
+                ) : null}
               </label>
             </div>
           </SectionCard>
@@ -772,16 +839,37 @@ export function CreateOrder() {
                           </select>
                         </label>
                       </div>
-                      <label className="block space-y-1.5 sm:col-span-3">
-                        <span className={labelClass}>Line Remarks</span>
-                        <input
-                          value={line.remarks}
-                          onChange={(event) =>
-                            updateLine(line.key, { remarks: event.target.value })
-                          }
-                          className={fieldClass}
-                        />
-                      </label>
+                      <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2">
+                        <label className="block space-y-1.5">
+                          <span className={labelClass}>Status</span>
+                          <select
+                            value={line.lineStatus}
+                            onChange={(event) =>
+                              updateLine(line.key, {
+                                lineStatus: event.target.value as
+                                  | 'OPEN'
+                                  | 'CLOSED',
+                              })
+                            }
+                            className={fieldClass}
+                          >
+                            <option value="OPEN">Open</option>
+                            <option value="CLOSED">Close</option>
+                          </select>
+                        </label>
+                        <label className="block space-y-1.5">
+                          <span className={labelClass}>Line Remarks</span>
+                          <input
+                            value={line.remarks}
+                            onChange={(event) =>
+                              updateLine(line.key, {
+                                remarks: event.target.value,
+                              })
+                            }
+                            className={fieldClass}
+                          />
+                        </label>
+                      </div>
 
                       {selected ? (
                         <p className="sm:col-span-3 text-sm text-muted">

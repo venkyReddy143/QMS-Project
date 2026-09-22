@@ -1,4 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { MoreVertical } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { fetchAllBatchesApi } from '../lib/api/batches'
 import type { ProductionBatch } from '../types/orders'
@@ -43,6 +45,82 @@ export function SuperAdminProduction() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [processBatchId, setProcessBatchId] = useState<string | null>(null)
+  const [menuBatchId, setMenuBatchId] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  )
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+
+  function openMenu(batchId: string) {
+    if (menuBatchId === batchId) {
+      setMenuBatchId(null)
+      setMenuPos(null)
+      return
+    }
+    const button = buttonRefs.current[batchId]
+    if (!button) return
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 176
+    const menuHeight = 88
+    const left = Math.min(
+      rect.left,
+      Math.max(8, window.innerWidth - menuWidth - 8),
+    )
+    const openUp = rect.bottom + menuHeight + 8 > window.innerHeight
+    const top = openUp
+      ? Math.max(8, rect.top - menuHeight - 4)
+      : rect.bottom + 4
+    setMenuPos({ top, left })
+    setMenuBatchId(batchId)
+  }
+
+  function closeMenu() {
+    setMenuBatchId(null)
+    setMenuPos(null)
+  }
+
+  useEffect(() => {
+    if (!menuBatchId) return
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node
+      if (menuRef.current?.contains(target)) return
+      const openButton = buttonRefs.current[menuBatchId]
+      if (openButton?.contains(target)) return
+      closeMenu()
+    }
+    function handleReposition() {
+      const button = buttonRefs.current[menuBatchId]
+      if (!button) {
+        closeMenu()
+        return
+      }
+      const rect = button.getBoundingClientRect()
+      const menuWidth = 176
+      const menuHeight = 88
+      const left = Math.min(
+        rect.left,
+        Math.max(8, window.innerWidth - menuWidth - 8),
+      )
+      const openUp = rect.bottom + menuHeight + 8 > window.innerHeight
+      const top = openUp
+        ? Math.max(8, rect.top - menuHeight - 4)
+        : rect.bottom + 4
+      setMenuPos({ top, left })
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [menuBatchId])
+
+  useEffect(() => {
+    closeMenu()
+  }, [view])
 
   useEffect(() => {
     let active = true
@@ -73,6 +151,8 @@ export function SuperAdminProduction() {
     [batches, view],
   )
 
+  const menuBatch = visible.find((batch) => batch.id === menuBatchId)
+
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-border bg-surface-raised p-5">
@@ -82,7 +162,7 @@ export function SuperAdminProduction() {
         </p>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised">
+      <section className="rounded-2xl border border-border bg-surface-raised">
         {error ? (
           <p className="px-4 py-4 text-sm font-medium text-danger">{error}</p>
         ) : null}
@@ -90,6 +170,7 @@ export function SuperAdminProduction() {
           <table className="min-w-full text-left text-base">
             <thead className="bg-surface-muted text-sm font-bold uppercase tracking-wide text-muted">
               <tr>
+                <th className="px-4 py-3">Actions</th>
                 <th className="px-4 py-3">Prod Batch</th>
                 <th className="px-4 py-3">Order ID</th>
                 <th className="px-4 py-3">Product</th>
@@ -98,7 +179,6 @@ export function SuperAdminProduction() {
                 <th className="px-4 py-3">Qty</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Production In Charge</th>
-                <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -118,6 +198,21 @@ export function SuperAdminProduction() {
                 visible.map((batch) => (
                   <Fragment key={batch.id}>
                     <tr className="border-t border-border align-top">
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          ref={(node) => {
+                            buttonRefs.current[batch.id] = node
+                          }}
+                          onClick={() => openMenu(batch.id)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-muted text-foreground hover:border-accent hover:text-accent"
+                          aria-label={`Actions for ${batch.batchNo}`}
+                          aria-expanded={menuBatchId === batch.id}
+                          aria-haspopup="menu"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </td>
                       <td className="px-4 py-3 font-semibold">{batch.batchNo}</td>
                       <td className="px-4 py-3 font-bold text-accent">
                         {batch.orderNo || '—'}
@@ -129,28 +224,6 @@ export function SuperAdminProduction() {
                       <td className="px-4 py-3">{statusLabel(batch.status)}</td>
                       <td className="px-4 py-3">
                         {batch.productionInCharge || '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setProcessBatchId(
-                                processBatchId === batch.id ? null : batch.id,
-                              )
-                            }
-                            className="min-h-10 rounded-xl border border-border bg-surface-muted px-3 text-sm font-bold hover:border-accent"
-                          >
-                            View Process Steps
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/orders/${batch.orderId}`)}
-                            className="min-h-10 rounded-xl border border-border bg-surface-muted px-3 text-sm font-bold hover:border-accent hover:text-accent"
-                          >
-                            Open
-                          </button>
-                        </div>
                       </td>
                     </tr>
                     {processBatchId === batch.id ? (
@@ -222,6 +295,43 @@ export function SuperAdminProduction() {
           </table>
         </div>
       </section>
+
+      {menuBatch && menuPos
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{ top: menuPos.top, left: menuPos.left }}
+              className="fixed z-[100] min-w-[11rem] overflow-hidden rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-2 text-left text-sm font-semibold hover:bg-surface-muted"
+                onClick={() => {
+                  setProcessBatchId(
+                    processBatchId === menuBatch.id ? null : menuBatch.id,
+                  )
+                  closeMenu()
+                }}
+              >
+                View Process Steps
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-2 text-left text-sm font-semibold hover:bg-surface-muted"
+                onClick={() => {
+                  closeMenu()
+                  navigate(`/orders/${menuBatch.orderId}`)
+                }}
+              >
+                Open
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }
