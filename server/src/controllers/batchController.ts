@@ -544,46 +544,46 @@ export async function createBatch(
       .map((step) => String(step.name ?? '').trim())
       .filter(Boolean)
 
-    const processMachines = (productLine?.processSteps ?? []).map((step) => ({
-      processStepName: step.name,
-      sequence: step.sequence,
-      machineId: productLine?.primaryMachineId,
-      machineCode: '',
-      machineName: '',
-    }))
-
-    const requestedMachineIds = Array.isArray(req.body.machineIds)
-      ? req.body.machineIds
-      : String(req.body.machineIds ?? '')
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean)
-    const fallbackMachineId = productLine?.primaryMachineId
-      ? productLine.primaryMachineId.toString()
-      : ''
-    const machineIdList = [
-      ...new Set(
-        (requestedMachineIds.length > 0 ? requestedMachineIds : [fallbackMachineId]).filter(
-          (id) => looksLikeObjectId(id),
-        ),
-      ),
-    ]
-    const machines =
-      machineIdList.length > 0
-        ? await Machine.find({ _id: { $in: machineIdList } })
-        : []
-    const assignedMachines = machines.map((machine) => ({
-      machineId: machine._id,
-      machineCode: machine.machineCode,
-      machineName: machine.name,
-    }))
-    if (machines[0] && processMachines.length > 0) {
-      for (const item of processMachines) {
-        item.machineId = machines[0]._id
-        item.machineCode = machines[0].machineCode
-        item.machineName = machines[0].name
-      }
+    const requestedByStep = new Map(
+      (Array.isArray(req.body.processMachines) ? req.body.processMachines : [])
+        .map((item) => [String(item.processStepName ?? '').trim().toLowerCase(), item]),
+    )
+    const stepSources = (productLine?.processSteps ?? []).filter((step) => {
+      if (!processStepName) return true
+      return step.name.toLowerCase() === processStepName.toLowerCase()
+    })
+    const processMachines = []
+    for (const step of stepSources) {
+      const requested = requestedByStep.get(step.name.toLowerCase())
+      const machineId = String(
+        requested?.machineId ?? step.machineId?.toString() ?? '',
+      ).trim()
+      const machine =
+        machineId && looksLikeObjectId(machineId)
+          ? await Machine.findById(machineId)
+          : null
+      processMachines.push({
+        processStepName: step.name,
+        sequence: step.sequence,
+        machineId: machine?._id,
+        machineCode: machine?.machineCode ?? step.machineCode ?? '',
+        machineName: machine?.name ?? step.machineName ?? '',
+      })
     }
+
+    const assignedById = new Map<
+      string,
+      { machineId: mongoose.Types.ObjectId; machineCode: string; machineName: string }
+    >()
+    for (const item of processMachines) {
+      if (!item.machineId) continue
+      assignedById.set(item.machineId.toString(), {
+        machineId: item.machineId,
+        machineCode: item.machineCode,
+        machineName: item.machineName,
+      })
+    }
+    const assignedMachines = [...assignedById.values()]
 
     const batch = await DeliveryBatch.create({
       orderId: order._id,

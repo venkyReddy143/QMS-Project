@@ -24,6 +24,12 @@ function todayIsoDate(): string {
   return `${now.getFullYear()}-${month}-${day}`
 }
 
+function machinesForProduct(
+  steps: Array<{ name: string; machineId?: string }>,
+): Record<string, string> {
+  return Object.fromEntries(steps.map((step) => [step.name, step.machineId ?? '']))
+}
+
 function nextBatchNo(batches: ProductionBatch[]): string {
   let max = 0
   for (const batch of batches) {
@@ -42,7 +48,7 @@ export function CreateBatch() {
   const [machines, setMachines] = useState<AdminMachine[]>([])
   const [productId, setProductId] = useState('')
   const [processStepName, setProcessStepName] = useState('')
-  const [machineIds, setMachineIds] = useState<string[]>([])
+  const [stepMachines, setStepMachines] = useState<Record<string, string>>({})
   const [batchNo, setBatchNo] = useState('B01')
   const [quantity, setQuantity] = useState('')
   const [targetDate, setTargetDate] = useState(todayIsoDate())
@@ -77,10 +83,10 @@ export function CreateBatch() {
         setOrder(nextOrder)
         setBatches(nextBatches)
         setMachines(machineRes.machines ?? [])
-        setProductId(nextOrder.products[0]?.productId ?? '')
+        const firstProduct = nextOrder.products[0]
+        setProductId(firstProduct?.productId ?? '')
         setBatchNo(nextBatchNo(nextBatches))
-        const primary = nextOrder.products[0]?.primaryMachineId
-        setMachineIds(primary ? [primary] : [])
+        setStepMachines(machinesForProduct(firstProduct?.processSteps ?? []))
       } catch (loadError) {
         if (!active) return
         setError(
@@ -99,6 +105,9 @@ export function CreateBatch() {
   const products = order?.products ?? []
   const selectedProduct = products.find((item) => item.productId === productId)
   const steps = selectedProduct?.processSteps ?? []
+  const machinesForBatch = processStepName
+    ? steps.filter((step) => step.name === processStepName)
+    : steps
 
   const remaining = useMemo(() => {
     if (!selectedProduct) return 0
@@ -113,9 +122,8 @@ export function CreateBatch() {
   }, [batches, processStepName, selectedProduct])
 
   useEffect(() => {
-    const primary = selectedProduct?.primaryMachineId
-    if (primary) setMachineIds([primary])
-  }, [selectedProduct?.primaryMachineId])
+    setStepMachines(machinesForProduct(selectedProduct?.processSteps ?? []))
+  }, [selectedProduct?.productId])
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
@@ -147,10 +155,26 @@ export function CreateBatch() {
 
     setSaving(true)
     try {
+      const stepsForBatch = processStepName
+        ? steps.filter((step) => step.name === processStepName)
+        : steps
+      const missingMachine = stepsForBatch.find(
+        (step) => !stepMachines[step.name],
+      )
+      if (stepsForBatch.length > 0 && missingMachine) {
+        setError(`Select a machine for ${missingMachine.name}.`)
+        setSaving(false)
+        return
+      }
+
       const response = await createBatchApi(orderId, {
         productId,
         processStepName: processStepName || undefined,
-        machineIds,
+        processMachines: stepsForBatch.map((step, index) => ({
+          processStepName: step.name,
+          sequence: step.sequence ?? index + 1,
+          machineId: stepMachines[step.name],
+        })),
         deferSerials: true,
         status: 'CREATED',
         productionInCharge: productionInCharge.trim(),
@@ -237,36 +261,39 @@ export function CreateBatch() {
                 ))}
               </select>
             </label>
-            <label className="block space-y-1.5 sm:col-span-2">
-              <span className={labelClass}>Assigned machines</span>
-              <div className="grid gap-2 rounded-xl border border-border bg-surface-muted p-3 sm:grid-cols-2">
-                {machines.length === 0 ? (
-                  <p className="text-sm text-muted">No machines in master.</p>
-                ) : (
-                  machines.map((machine) => {
-                    const checked = machineIds.includes(machine.id)
-                    return (
-                      <label key={machine.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setMachineIds((current) =>
-                              checked
-                                ? current.filter((id) => id !== machine.id)
-                                : [...current, machine.id],
-                            )
-                          }
-                        />
-                        <span>
+            <div className="space-y-3 sm:col-span-2">
+              <span className={labelClass}>Machine by process step</span>
+              {machinesForBatch.length === 0 ? (
+                <p className="rounded-xl border border-border bg-surface-muted px-3 py-3 text-sm text-muted">
+                  Save process steps on the order before assigning machines.
+                </p>
+              ) : (
+                machinesForBatch.map((step) => (
+                  <label key={step.name} className="block space-y-1.5">
+                    <span className="text-sm font-semibold text-foreground">
+                      {step.name}
+                    </span>
+                    <select
+                      value={stepMachines[step.name] ?? ''}
+                      onChange={(event) =>
+                        setStepMachines((current) => ({
+                          ...current,
+                          [step.name]: event.target.value,
+                        }))
+                      }
+                      className={fieldClass}
+                    >
+                      <option value="">Select machine</option>
+                      {machines.map((machine) => (
+                        <option key={machine.id} value={machine.id}>
                           {machine.machineCode} — {machine.name}
-                        </span>
-                      </label>
-                    )
-                  })
-                )}
-              </div>
-            </label>
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))
+              )}
+            </div>
             <label className="block space-y-1.5">
               <span className={labelClass}>Batch No</span>
               <input

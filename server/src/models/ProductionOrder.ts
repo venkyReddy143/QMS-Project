@@ -15,6 +15,9 @@ export interface IOrderProcessStep {
   name: string
   code?: string
   machineType: string
+  machineId?: Types.ObjectId
+  machineCode?: string
+  machineName?: string
   hoursPerPiece: number
   isCustom: boolean
 }
@@ -70,6 +73,9 @@ const orderProcessStepSchema = new Schema<IOrderProcessStep>(
     name: { type: String, required: true, trim: true },
     code: { type: String, trim: true, uppercase: true },
     machineType: { type: String, required: true, trim: true },
+    machineId: { type: Schema.Types.ObjectId, ref: 'Machine' },
+    machineCode: { type: String, trim: true, default: '' },
+    machineName: { type: String, trim: true, default: '' },
     hoursPerPiece: { type: Number, required: true, min: 0 },
     isCustom: { type: Boolean, required: true, default: false },
   },

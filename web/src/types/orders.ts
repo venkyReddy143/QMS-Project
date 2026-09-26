@@ -54,6 +54,9 @@ export interface OrderProcessStep {
   isCustom: boolean
   code?: string
   sequence?: number
+  machineId?: string
+  machineCode?: string
+  machineName?: string
 }
 
 export interface OrderProductLine {
@@ -248,6 +251,11 @@ export interface CreateBatchPayload {
   productId: string
   processStepName?: string
   machineIds?: string[]
+  processMachines?: Array<{
+    processStepName: string
+    sequence: number
+    machineId?: string
+  }>
   deferSerials?: boolean
   productionInCharge?: string
   status?: string

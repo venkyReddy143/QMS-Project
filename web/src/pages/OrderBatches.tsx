@@ -68,6 +68,15 @@ function serialRange(batch: ProductionBatch): string {
 }
 
 function machineNames(batch: ProductionBatch): string {
+  const processMachines = batch.processMachines ?? []
+  if (processMachines.length > 0) {
+    return processMachines
+      .map((item) => {
+        const machine = item.machineCode || item.machineName || '—'
+        return `${item.processStepName}: ${machine}`
+      })
+      .join(', ')
+  }
   const machines = batch.assignedMachines ?? []
   if (machines.length === 0) return '—'
   return machines
