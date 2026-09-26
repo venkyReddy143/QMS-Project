@@ -1,11 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, PlusCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, PlusCircle, Trash2, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { canPlanProduction } from '../types/auth'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import {
-  fetchCustomers,
   fetchMachines,
   fetchProcessSteps,
   fetchProducts,
@@ -30,6 +29,7 @@ interface PlanStep {
   hours: number
   isCustom: boolean
   code?: string
+  machineId: string
 }
 
 interface ProductPlan {
@@ -71,6 +71,26 @@ function statusLabel(status: string): string {
     default:
       return status
   }
+}
+
+function lineStatusLabel(status: string | undefined): string {
+  switch (status) {
+    case 'CLOSED':
+      return 'Close'
+    case 'IN_PRODUCTION':
+      return 'In Production'
+    case 'COMPLETED':
+      return 'Completed'
+    case 'ON_HOLD':
+      return 'On Hold'
+    case 'OPEN':
+    default:
+      return 'Open'
+  }
+}
+
+function sourcingLabel(value: string | undefined): string {
+  return value === 'CUSTOMER' ? 'Customer' : 'Company'
 }
 
 function priorityLabel(value: string | undefined): string {
@@ -118,6 +138,7 @@ function stepsFromMaster(
       hours: step.hoursPerPiece || master?.standardHoursPerPiece || 0,
       isCustom: false,
       code: master?.code ?? step.code,
+      machineId: '',
     }
   })
 }
@@ -126,11 +147,11 @@ function isPlanningComplete(order: ProductionOrder): boolean {
   if (!order.customerName?.trim()) return false
   const products = order.products ?? []
   if (products.length === 0) return false
-  return products.every(
-    (line) =>
-      Boolean(line.primaryMachineId || line.primaryMachineType) &&
-      (line.processSteps?.length ?? 0) > 0,
-  )
+  return products.every((line) => {
+    const steps = line.processSteps ?? []
+    if (steps.length === 0) return false
+    return steps.every((step) => Boolean(step.machineId || line.primaryMachineId))
+  })
 }
 
 export function OrderDetail() {
@@ -146,11 +167,9 @@ export function OrderDetail() {
   const planningStatus = useAppSelector((state) => state.orders.planningStatus)
   const planningError = useAppSelector((state) => state.orders.planningError)
 
-  const customers = useAppSelector((state) => state.masters.customers)
   const products = useAppSelector((state) => state.masters.products)
   const machines = useAppSelector((state) => state.masters.machines)
   const processStepMasters = useAppSelector((state) => state.masters.processSteps)
-  const customersStatus = useAppSelector((state) => state.masters.customersStatus)
   const machinesStatus = useAppSelector((state) => state.masters.machinesStatus)
   const processStepsStatus = useAppSelector(
     (state) => state.masters.processStepsStatus,
@@ -164,12 +183,12 @@ export function OrderDetail() {
   const [saved, setSaved] = useState(false)
   const [view, setView] = useState<'details' | 'batches'>('details')
   const [expandedProcessLine, setExpandedProcessLine] = useState<string | null>(null)
+  const [detailLineId, setDetailLineId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!orderId) return
     void dispatch(fetchOrder(orderId))
     if (canEdit) {
-      void dispatch(fetchCustomers())
       void dispatch(fetchProducts())
       void dispatch(fetchMachines())
       void dispatch(fetchProcessSteps())
@@ -199,6 +218,7 @@ export function OrderDetail() {
           hours: step.hoursPerPiece,
           isCustom: step.isCustom,
           code: step.code,
+          machineId: step.machineId || line.primaryMachineId || '',
         })),
         newStepId: '',
         newStepHours: '0.50',
@@ -259,6 +279,7 @@ export function OrderDetail() {
           hours,
           isCustom: false,
           code: master.code,
+          machineId: '',
         },
       ],
       newStepId: '',
@@ -297,10 +318,25 @@ export function OrderDetail() {
           name,
           hours,
           isCustom: true,
+          machineId: '',
         },
       ],
       customStepName: '',
       customStepHours: '0.50',
+    })
+  }
+
+  function updateStepMachine(
+    productId: string,
+    stepKey: string,
+    machineId: string,
+  ) {
+    const plan = plans.find((item) => item.productId === productId)
+    if (!plan) return
+    updatePlan(productId, {
+      steps: plan.steps.map((step) =>
+        step.id === stepKey ? { ...step, machineId } : step,
+      ),
     })
   }
 
@@ -317,21 +353,30 @@ export function OrderDetail() {
     if (!order) return
     setSaved(false)
 
-    if (!customerName.trim()) {
-      setFormError('Select a customer.')
+    const line = (order.products ?? []).find(
+      (item) => item.productId === expandedProcessLine,
+    )
+    const plan = plans.find((item) => item.productId === expandedProcessLine)
+    if (!line || !plan) {
+      setFormError('Open a product line before saving.')
+      return
+    }
+    if (!plan.steps.length) {
+      setFormError(`Add at least one process step for ${line.productName}.`)
+      return
+    }
+    const missingMachine = plan.steps.find((step) => !step.machineId)
+    if (missingMachine) {
+      setFormError(
+        `Select a machine for ${missingMachine.name} on ${line.productName}.`,
+      )
       return
     }
 
-    for (const line of order.products ?? []) {
-      const plan = plans.find((item) => item.productId === line.productId)
-      if (!plan?.machineId) {
-        setFormError(`Select a machine for ${line.productName}.`)
-        return
-      }
-      if (!plan.steps.length) {
-        setFormError(`Add at least one process step for ${line.productName}.`)
-        return
-      }
+    const savedCustomer = customerName.trim() || order.customerName?.trim() || ''
+    if (!savedCustomer) {
+      setFormError('Customer name is missing on this order.')
+      return
     }
 
     setFormError(null)
@@ -339,33 +384,35 @@ export function OrderDetail() {
       updateOrderPlanning({
         orderId: order.id,
         payload: {
-          customerName: customerName.trim(),
-          ownerName: ownerName.trim(),
-          inChargeName: inChargeName.trim(),
-          products: plans.map((plan) => {
-            const line = order.products?.find((item) => item.productId === plan.productId)
-            return {
-            productId: plan.productId,
-            primaryMachineId: plan.machineId,
-            drawingNumber: line?.drawingNumber,
-            remarks: line?.remarks,
-            rawMaterialSourcing:
-              (line?.rawMaterialSourcing as 'COMPANY' | 'CUSTOMER' | undefined) ??
-              'COMPANY',
-            processSteps: plan.steps.map((step) => ({
-              name: step.name,
-              hoursPerPiece: step.hours,
-              isCustom: step.isCustom,
-              ...(step.code ? { code: step.code } : {}),
-            })),
-          }}),
+          customerName: savedCustomer,
+          ownerName: ownerName.trim() || order.ownerName,
+          inChargeName: inChargeName.trim() || order.inChargeName,
+          products: [
+            {
+              productId: plan.productId,
+              primaryMachineId:
+                plan.steps.find((step) => step.machineId)?.machineId ?? '',
+              drawingNumber: line.drawingNumber,
+              remarks: line.remarks,
+              rawMaterialSourcing:
+                (line.rawMaterialSourcing as 'COMPANY' | 'CUSTOMER' | undefined) ??
+                'COMPANY',
+              processSteps: plan.steps.map((step) => ({
+                name: step.name,
+                hoursPerPiece: step.hours,
+                isCustom: step.isCustom,
+                machineId: step.machineId,
+                ...(step.code ? { code: step.code } : {}),
+              })),
+            },
+          ],
         },
       }),
     )
 
     if (updateOrderPlanning.fulfilled.match(result)) {
       setSaved(true)
-      setView('batches')
+      setExpandedProcessLine(null)
     }
   }
 
@@ -394,6 +441,11 @@ export function OrderDetail() {
   }
 
   const productsOnOrder = order.products ?? []
+  const detailLineIndex = productsOnOrder.findIndex(
+    (line) => line.productId === detailLineId,
+  )
+  const detailLine =
+    detailLineIndex >= 0 ? productsOnOrder[detailLineIndex] : null
   const planningReady = isPlanningComplete(order)
   const isSuperAdmin = user?.role === 'Super Admin'
 
@@ -507,6 +559,13 @@ export function OrderDetail() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
+                            onClick={() => setDetailLineId(line.productId)}
+                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
+                          >
+                            View Order Line Details
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setView('batches')}
                             className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
                           >
@@ -521,25 +580,15 @@ export function OrderDetail() {
                                   : line.productId,
                               )
                             }
-                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-bold hover:border-accent ${
+                              expandedProcessLine === line.productId
+                                ? 'border-accent bg-accent text-white'
+                                : 'border-border'
+                            }`}
                           >
                             View Process Steps
                           </button>
                         </div>
-                        {expandedProcessLine === line.productId ? (
-                          <ul className="mt-2 space-y-1 text-xs text-muted">
-                            {(line.processSteps ?? []).length === 0 ? (
-                              <li>No process steps yet.</li>
-                            ) : (
-                              (line.processSteps ?? []).map((step, stepIndex) => (
-                                <li key={`${step.name}-${stepIndex}`}>
-                                  {step.sequence ?? stepIndex + 1}. {step.name} (
-                                  {step.hoursPerPiece}h)
-                                </li>
-                              ))
-                            )}
-                          </ul>
-                        ) : null}
                       </td>
                     </tr>
                   ))
@@ -548,6 +597,99 @@ export function OrderDetail() {
             </table>
           </div>
         </section>
+      ) : null}
+
+      {detailLine ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 sm:items-center"
+          onClick={() => setDetailLineId(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-line-details-title"
+            className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-border bg-surface-raised p-5 shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3
+                  id="order-line-details-title"
+                  className="text-lg font-bold text-foreground"
+                >
+                  Order Line Details
+                </h3>
+                <p className="text-sm text-muted">
+                  Line {detailLine.lineNumber ?? detailLineIndex + 1} ·{' '}
+                  {detailLine.productCode}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailLineId(null)}
+                className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted hover:text-foreground"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <p className={labelClass}>Product</p>
+                <p className="rounded-xl border border-border bg-surface-muted px-3 py-3 text-base">
+                  {detailLine.productName}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <p className={labelClass}>Quantity</p>
+                <p className="rounded-xl border border-border bg-surface-muted px-3 py-3 text-base">
+                  {detailLine.quantity} {detailLine.uom.toLowerCase()}
+                </p>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <p className={labelClass}>Product Details</p>
+                <p className="min-h-16 whitespace-pre-wrap rounded-xl border border-border bg-surface-muted px-3 py-3 text-base">
+                  {detailLine.description?.trim() || '—'}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <p className={labelClass}>Drawing Number</p>
+                <p className="rounded-xl border border-border bg-surface-muted px-3 py-3 text-base">
+                  {detailLine.drawingNumber?.trim() || '—'}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <p className={labelClass}>Raw Material Sourcing</p>
+                <p className="rounded-xl border border-border bg-surface-muted px-3 py-3 text-base">
+                  {sourcingLabel(detailLine.rawMaterialSourcing)}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <p className={labelClass}>Status</p>
+                <p className="rounded-xl border border-border bg-surface-muted px-3 py-3 text-base">
+                  {lineStatusLabel(detailLine.lineStatus)}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <p className={labelClass}>Line Remarks</p>
+                <p className="rounded-xl border border-border bg-surface-muted px-3 py-3 text-base">
+                  {detailLine.remarks?.trim() || '—'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDetailLineId(null)}
+                className="min-h-12 rounded-xl border border-border px-6 text-base font-bold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {canEdit ? (
@@ -582,62 +724,9 @@ export function OrderDetail() {
         <OrderBatches order={order} canEdit={canEdit} />
       ) : canEdit ? (
         <form onSubmit={handleSave} className="space-y-4">
-          <section className="rounded-2xl border border-border bg-surface-raised p-5">
-            <h3 className="mb-4 text-lg font-bold text-foreground">Customer</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block space-y-1.5">
-              <span className={labelClass}>Customer Name</span>
-              <select
-                value={customerName}
-                onChange={(event) => {
-                  setCustomerName(event.target.value)
-                  setSaved(false)
-                }}
-                disabled={customersStatus === 'loading'}
-                className={fieldClass}
-              >
-                <option value="">
-                  {customersStatus === 'loading'
-                    ? 'Loading customers…'
-                    : 'Select customer'}
-                </option>
-                {customerName &&
-                !customers.some((item) => item.name === customerName) ? (
-                  <option value={customerName}>{customerName}</option>
-                ) : null}
-                {customers.map((item) => (
-                  <option key={item.id} value={item.name}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block space-y-1.5">
-              <span className={labelClass}>Owner</span>
-              <input
-                value={ownerName}
-                onChange={(event) => {
-                  setOwnerName(event.target.value)
-                  setSaved(false)
-                }}
-                className={fieldClass}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className={labelClass}>In Charge</span>
-              <input
-                value={inChargeName}
-                onChange={(event) => {
-                  setInChargeName(event.target.value)
-                  setSaved(false)
-                }}
-                className={fieldClass}
-              />
-            </label>
-            </div>
-          </section>
-
-          {productsOnOrder.map((line, index) => {
+          {productsOnOrder
+            .filter((line) => expandedProcessLine === line.productId)
+            .map((line) => {
             const plan = plans.find((item) => item.productId === line.productId)
             const usedCodes = new Set(
               (plan?.steps ?? []).map((step) => step.code ?? step.id),
@@ -646,13 +735,18 @@ export function OrderDetail() {
               (item) => !usedCodes.has(item.code) && !usedCodes.has(item.id),
             )
 
+            const lineNumber =
+              line.lineNumber ??
+              productsOnOrder.findIndex((item) => item.productId === line.productId) +
+                1
+
             return (
               <section
                 key={line.productId}
                 className="rounded-2xl border border-border bg-surface-raised p-5"
               >
                 <h3 className="text-lg font-bold text-foreground">
-                  Product {index + 1}: {line.productName}
+                  Product {lineNumber}: {line.productName}
                 </h3>
                 <p className="mt-1 text-sm text-muted">
                   {line.productCode} · {line.quantity} {line.uom.toLowerCase()}
@@ -662,29 +756,6 @@ export function OrderDetail() {
                     {line.description}
                   </p>
                 ) : null}
-
-                <label className="mt-4 block space-y-1.5">
-                  <span className={labelClass}>Machine</span>
-                  <select
-                    value={plan?.machineId ?? ''}
-                    onChange={(event) =>
-                      updatePlan(line.productId, { machineId: event.target.value })
-                    }
-                    disabled={machinesStatus === 'loading'}
-                    className={fieldClass}
-                  >
-                    <option value="">
-                      {machinesStatus === 'loading'
-                        ? 'Loading machines…'
-                        : 'Select machine'}
-                    </option>
-                    {machines.map((machine) => (
-                      <option key={machine.id} value={machine.id}>
-                        {machineLabel(machine)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
 
                 <div className="mt-4">
                   <span className={labelClass}>Process Steps</span>
@@ -697,7 +768,7 @@ export function OrderDetail() {
                       (plan?.steps ?? []).map((step, stepIndex) => (
                         <li
                           key={step.id}
-                          className="flex min-h-12 items-center gap-3 rounded-xl border border-border bg-surface-muted px-3"
+                          className="flex min-h-12 flex-wrap items-center gap-3 rounded-xl border border-border bg-surface-muted px-3 py-2"
                         >
                           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
                             {stepIndex + 1}
@@ -715,6 +786,30 @@ export function OrderDetail() {
                               {step.hours.toFixed(2)}h / pc
                             </p>
                           </div>
+                          <select
+                            value={step.machineId}
+                            onChange={(event) =>
+                              updateStepMachine(
+                                line.productId,
+                                step.id,
+                                event.target.value,
+                              )
+                            }
+                            disabled={machinesStatus === 'loading'}
+                            aria-label={`Machine for ${step.name}`}
+                            className="min-h-10 min-w-[14rem] flex-1 rounded-lg border border-border bg-surface-raised px-3 text-sm outline-none focus:border-accent"
+                          >
+                            <option value="">
+                              {machinesStatus === 'loading'
+                                ? 'Loading machines…'
+                                : 'Select machine'}
+                            </option>
+                            {machines.map((machine) => (
+                              <option key={machine.id} value={machine.id}>
+                                {machineLabel(machine)}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             type="button"
                             onClick={() => removeStep(line.productId, step.id)}
@@ -828,35 +923,31 @@ export function OrderDetail() {
             )
           })}
 
-          {formError || planningError ? (
+          {expandedProcessLine && (formError || planningError) ? (
             <div className="rounded-xl border border-danger/30 bg-red-50 px-4 py-3 text-sm font-medium text-danger">
               {formError || planningError}
             </div>
           ) : null}
-          {saved ? (
+          {expandedProcessLine && saved ? (
             <div className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-              Order details saved.
+              Process steps saved for this line.
             </div>
           ) : null}
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={planningStatus === 'loading'}
-              className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white hover:brightness-110 disabled:opacity-70"
-            >
-              {planningStatus === 'loading' ? 'Saving…' : 'Save'}
-            </button>
-          </div>
+          {expandedProcessLine ? (
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={planningStatus === 'loading'}
+                className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white hover:brightness-110 disabled:opacity-70"
+              >
+                {planningStatus === 'loading' ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          ) : null}
         </form>
       ) : (
         <>
-          <section className="rounded-2xl border border-border bg-surface-raised p-5">
-            <h3 className="text-lg font-bold text-foreground">Customer</h3>
-            <p className="mt-2 text-base">
-              {order.customerName || 'Not added yet'}
-            </p>
-          </section>
           {productsOnOrder.map((line) => (
             <section
               key={line.productId}
@@ -873,10 +964,6 @@ export function OrderDetail() {
                   {line.description}
                 </p>
               ) : null}
-              <p className="mt-3 text-sm">
-                <span className="font-bold">Machine: </span>
-                {line.primaryMachineType || 'Not added yet'}
-              </p>
               <p className="mt-2 text-sm font-bold">Process steps</p>
               {(line.processSteps ?? []).length === 0 ? (
                 <p className="mt-1 text-sm text-muted">Not added yet</p>
@@ -886,6 +973,9 @@ export function OrderDetail() {
                     <li key={`${step.name}-${stepIndex}`}>
                       {stepIndex + 1}. {step.name} ({step.hoursPerPiece.toFixed(2)}
                       h / pc)
+                      {step.machineCode || step.machineName
+                        ? ` · ${step.machineCode || step.machineName}`
+                        : ' · No machine'}
                       {step.isCustom ? ' · Custom' : ''}
                     </li>
                   ))}

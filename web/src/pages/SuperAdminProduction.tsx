@@ -277,14 +277,22 @@ export function SuperAdminProduction() {
                           </p>
                           <p className="mt-1 text-sm text-muted">
                             Machines:{' '}
-                            {(batch.assignedMachines ?? []).length === 0
-                              ? '—'
-                              : (batch.assignedMachines ?? [])
-                                  .map(
-                                    (machine) =>
-                                      machine.machineCode || machine.machineName,
-                                  )
-                                  .join(', ')}
+                            {(batch.processMachines ?? []).length > 0
+                              ? (batch.processMachines ?? [])
+                                  .map((item) => {
+                                    const machine =
+                                      item.machineCode || item.machineName || '—'
+                                    return `${item.processStepName}: ${machine}`
+                                  })
+                                  .join(', ')
+                              : (batch.assignedMachines ?? []).length === 0
+                                ? '—'
+                                : (batch.assignedMachines ?? [])
+                                    .map(
+                                      (machine) =>
+                                        machine.machineCode || machine.machineName,
+                                    )
+                                    .join(', ')}
                           </p>
                         </td>
                       </tr>

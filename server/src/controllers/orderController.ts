@@ -187,6 +187,9 @@ function productLinesFromOrder(order: {
         isCustom: step.isCustom,
         code: step.code,
         sequence: step.sequence,
+        machineId: step.machineId?.toString() ?? '',
+        machineCode: step.machineCode ?? '',
+        machineName: step.machineName ?? '',
       })),
     }))
   }
@@ -584,6 +587,7 @@ interface UpdateOrderPlanningBody {
       hoursPerPiece?: number
       hours?: number
       isCustom?: boolean
+      machineId?: string
     }>
   }>
 }
@@ -639,34 +643,15 @@ export async function updateOrderPlanning(
       masterSteps.map((step) => [step.code.toLowerCase(), step]),
     )
 
-    const incomingByProductId = new Map(
-      incomingProducts.map((item) => [String(item.productId ?? ''), item]),
-    )
-
-    for (const line of order.products) {
-      const incoming = incomingByProductId.get(line.productId.toString())
-      if (!incoming) {
+    for (const incoming of incomingProducts) {
+      const productId = String(incoming.productId ?? '').trim()
+      const line = order.products.find(
+        (item) => item.productId.toString() === productId,
+      )
+      if (!line) {
         res.status(400).json({
           success: false,
-          message: `Missing planning details for ${line.productName}.`,
-        })
-        return
-      }
-
-      const machineId = String(incoming.primaryMachineId ?? '').trim()
-      if (!machineId) {
-        res.status(400).json({
-          success: false,
-          message: `Select a machine for ${line.productName}.`,
-        })
-        return
-      }
-
-      const machine = await Machine.findById(machineId)
-      if (!machine || !machine.active) {
-        res.status(400).json({
-          success: false,
-          message: `Selected machine was not found for ${line.productName}.`,
+          message: 'That product is not on this order.',
         })
         return
       }
@@ -682,35 +667,58 @@ export async function updateOrderPlanning(
         return
       }
 
-      const processSteps: IOrderProcessStep[] = incomingSteps.map(
-        (step, index) => {
-          const name = String(step.name ?? '').trim()
-          const hours = toNumber(step.hoursPerPiece ?? step.hours) ?? 0
-          const master =
-            stepByName.get(name.toLowerCase()) ??
-            stepByCode.get(String(step.code ?? '').toLowerCase())
+      const processSteps: IOrderProcessStep[] = []
+      for (const [index, step] of incomingSteps.entries()) {
+        const name = String(step.name ?? '').trim()
+        const hours = toNumber(step.hoursPerPiece ?? step.hours) ?? 0
+        const stepMachineId = String(step.machineId ?? '').trim()
+        if (!name || hours < 0) {
+          res.status(400).json({
+            success: false,
+            message: `Each process step for ${line.productName} needs a name, and hours cannot be negative.`,
+          })
+          return
+        }
+        if (!stepMachineId) {
+          res.status(400).json({
+            success: false,
+            message: `Select a machine for ${name} on ${line.productName}.`,
+          })
+          return
+        }
 
-          return {
-            sequence: index + 1,
-            name,
-            code: master?.code ?? step.code,
-            machineType: String(master?.category ?? machine.machineType).trim(),
-            hoursPerPiece: hours,
-            isCustom: Boolean(step.isCustom) || !master,
-          }
-        },
-      )
+        const machine = await Machine.findById(stepMachineId)
+        if (!machine || !machine.active) {
+          res.status(400).json({
+            success: false,
+            message: `Selected machine was not found for ${name} on ${line.productName}.`,
+          })
+          return
+        }
 
-      if (processSteps.some((step) => !step.name || step.hoursPerPiece < 0)) {
-        res.status(400).json({
-          success: false,
-          message: `Each process step for ${line.productName} needs a name, and hours cannot be negative.`,
+        const master =
+          stepByName.get(name.toLowerCase()) ??
+          stepByCode.get(String(step.code ?? '').toLowerCase())
+
+        processSteps.push({
+          sequence: index + 1,
+          name,
+          code: master?.code ?? step.code,
+          machineType: String(machine.machineType || master?.category || '').trim(),
+          machineId: machine._id,
+          machineCode: machine.machineCode,
+          machineName: machine.name,
+          hoursPerPiece: hours,
+          isCustom: Boolean(step.isCustom) || !master,
         })
-        return
       }
 
-      line.primaryMachineId = machine._id
-      line.primaryMachineType = machine.machineType
+      const firstMachineId = processSteps[0]?.machineId
+      const firstMachine = firstMachineId
+        ? await Machine.findById(firstMachineId)
+        : null
+      line.primaryMachineId = firstMachine?._id
+      line.primaryMachineType = firstMachine?.machineType ?? ''
       line.processSteps = processSteps
       if (incoming.drawingNumber !== undefined) {
         line.drawingNumber = String(incoming.drawingNumber ?? '').trim()
