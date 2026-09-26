@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { CheckCircle2, PlusCircle, Trash2 } from 'lucide-react'
+import { CheckCircle2, PlusCircle, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchEmployeesApi } from '../lib/api/batches'
 import { fetchNextOrderNoApi } from '../lib/api/orders'
@@ -19,7 +19,6 @@ import type {
 
 type Priority = 'Normal' | 'High' | 'Urgent'
 type HeaderStatus = 'OPEN' | 'CLOSED'
-type DetailStep = 'products' | 'schedule' | 'notes'
 
 interface ProductLine {
   key: string
@@ -123,13 +122,15 @@ export function CreateOrder() {
   const [usersError, setUsersError] = useState<string | null>(null)
   const [orderDate, setOrderDate] = useState(todayIsoDate())
   const [headerStatus, setHeaderStatus] = useState<HeaderStatus>('OPEN')
-  const [lines, setLines] = useState<ProductLine[]>([emptyLine()])
+  const [lines, setLines] = useState<ProductLine[]>([])
+  const [productDialogOpen, setProductDialogOpen] = useState(false)
+  const [draft, setDraft] = useState<ProductLine>(emptyLine())
+  const [draftError, setDraftError] = useState<string | null>(null)
   const [targetDate, setTargetDate] = useState(todayIsoDate())
   const [priority, setPriority] = useState<Priority>('Normal')
   const [notes, setNotes] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [createdOrder, setCreatedOrder] = useState<ProductionOrder | null>(null)
-  const [detailStep, setDetailStep] = useState<DetailStep>('products')
   const [finished, setFinished] = useState(false)
   const [stepMessage, setStepMessage] = useState<string | null>(null)
   const [resumeLoading, setResumeLoading] = useState(Boolean(resumeOrderId))
@@ -228,8 +229,7 @@ export function CreateOrder() {
             : todayIsoDate(),
         )
         setHeaderStatus(order.status === 'CLOSED' ? 'CLOSED' : 'OPEN')
-        setDetailStep('products')
-        setLines([emptyLine()])
+        setLines([])
         setStepMessage('Add products to continue this order.')
         setResumeLoading(false)
       })
@@ -265,20 +265,40 @@ export function CreateOrder() {
     [lines],
   )
 
-  function updateLine(key: string, patch: Partial<ProductLine>) {
-    setLines((current) =>
-      current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
-    )
+  function openProductDialog() {
+    setDraft(emptyLine())
+    setDraftError(null)
+    setProductDialogOpen(true)
   }
 
-  function addLine() {
-    setLines((current) => [...current, emptyLine()])
+  function closeProductDialog() {
+    setProductDialogOpen(false)
+    setDraftError(null)
+  }
+
+  function saveDraftProduct() {
+    const qty = Number(draft.quantity)
+    if (!draft.productId) {
+      setDraftError('Select a product.')
+      return
+    }
+    if (!draft.quantity.trim() || !Number.isInteger(qty) || qty < 1) {
+      setDraftError('Quantity must be a whole number of at least 1.')
+      return
+    }
+    if (lines.some((line) => line.productId === draft.productId)) {
+      setDraftError('This product is already on the order.')
+      return
+    }
+
+    setLines((current) => [...current, draft])
+    setFieldErrors((current) => ({ ...current, products: undefined }))
+    setProductDialogOpen(false)
+    setDraftError(null)
   }
 
   function removeLine(key: string) {
-    setLines((current) =>
-      current.length === 1 ? current : current.filter((line) => line.key !== key),
-    )
+    setLines((current) => current.filter((line) => line.key !== key))
   }
 
   function resetForm() {
@@ -289,13 +309,15 @@ export function CreateOrder() {
     setInChargeName('')
     setOrderDate(todayIsoDate())
     setHeaderStatus('OPEN')
-    setLines([emptyLine()])
+    setLines([])
+    setProductDialogOpen(false)
+    setDraft(emptyLine())
+    setDraftError(null)
     setTargetDate(todayIsoDate())
     setPriority('Normal')
     setNotes('')
     setFieldErrors({})
     setCreatedOrder(null)
-    setDetailStep('products')
     setFinished(false)
     setStepMessage(null)
     setResumeError(null)
@@ -309,7 +331,7 @@ export function CreateOrder() {
     if (!poNumber.trim()) {
       errors.poNumber = 'Order reference / PO number is required.'
     }
-    return errors
+    return { ...errors, ...validateSchedule() }
   }
 
   function validateProducts(): FieldErrors {
@@ -377,12 +399,14 @@ export function CreateOrder() {
           inChargeName: inChargeName.trim(),
           orderDate,
           status: headerStatus,
+          dueDate: targetDate,
+          priority: PRIORITY_API[priority],
+          notes: notes.trim(),
           products: [],
         }),
       ).unwrap()
       setCreatedOrder(order)
-      setDetailStep('products')
-      setStepMessage('Order created. Continue with products, schedule, and notes.')
+      setStepMessage('Order created. Add products to finish.')
     } catch {
       return
     }
@@ -403,52 +427,8 @@ export function CreateOrder() {
         }),
       ).unwrap()
       setCreatedOrder(order)
-      setDetailStep('schedule')
-      setStepMessage('Products saved.')
-    } catch {
-      return
-    }
-  }
-
-  async function handleScheduleNext() {
-    if (!createdOrder) return
-    const errors = validateSchedule()
-    setFieldErrors(errors)
-    setStepMessage(null)
-    if (Object.keys(errors).length > 0) return
-
-    try {
-      const order = await dispatch(
-        updateOrderDetails({
-          orderId: createdOrder.id,
-          payload: {
-            dueDate: targetDate,
-            priority: PRIORITY_API[priority],
-          },
-        }),
-      ).unwrap()
-      setCreatedOrder(order)
-      setDetailStep('notes')
-      setStepMessage('Schedule saved.')
-    } catch {
-      return
-    }
-  }
-
-  async function handleNotesFinish() {
-    if (!createdOrder) return
-    setFieldErrors({})
-    setStepMessage(null)
-
-    try {
-      const order = await dispatch(
-        updateOrderDetails({
-          orderId: createdOrder.id,
-          payload: { notes: notes.trim() },
-        }),
-      ).unwrap()
-      setCreatedOrder(order)
       setFinished(true)
+      setStepMessage('Products saved.')
     } catch {
       return
     }
@@ -526,7 +506,7 @@ export function CreateOrder() {
           <section className="rounded-2xl border border-border bg-surface-raised p-5">
             <h2 className="text-2xl font-bold text-foreground">Create New Order</h2>
             <p className="mt-1 text-base text-muted">
-              Start with the order header. Products, schedule, and notes unlock after
+              Enter the order header, schedule, and notes. Products are added after
               the order is created.
             </p>
           </section>
@@ -619,6 +599,53 @@ export function CreateOrder() {
                 ) : null}
               </label>
             </div>
+          </SectionCard>
+
+          <SectionCard title="Schedule">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block space-y-1.5">
+                <span className={labelClass}>Target Completion Date</span>
+                <input
+                  type="date"
+                  value={targetDate}
+                  onChange={(event) => setTargetDate(event.target.value)}
+                  className={fieldClass}
+                />
+                {fieldErrors.targetDate ? (
+                  <p className="text-sm text-danger">{fieldErrors.targetDate}</p>
+                ) : null}
+              </label>
+
+              <label className="block space-y-1.5">
+                <span className={labelClass}>Priority</span>
+                <select
+                  value={priority}
+                  onChange={(event) =>
+                    setPriority(event.target.value as Priority)
+                  }
+                  className={fieldClass}
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="High">High</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
+              </label>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Notes">
+            <label className="block space-y-1.5">
+              <span className={labelClass}>
+                Internal Notes / Special Instructions
+              </span>
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                rows={4}
+                placeholder="Drawing revision, packing notes, inspection requirements…"
+                className="w-full rounded-xl border border-border bg-surface-muted px-3 py-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </label>
           </SectionCard>
 
           {resumeError ? (
@@ -718,181 +745,92 @@ export function CreateOrder() {
             </div>
           ) : null}
 
-          {detailStep === 'products' ? (
-            <SectionCard title="1. Products">
+          <SectionCard title="1. Products">
               <p className="text-sm text-muted">
-                Add each product on its own row with the ordered quantity.
+                Click Add Product, fill in the details, and save. Each saved
+                product appears in the table.
               </p>
-              <div className="space-y-3">
-                {lines.map((line, index) => {
-                  const usedIds = new Set(
-                    lines
-                      .filter((item) => item.key !== line.key && item.productId)
-                      .map((item) => item.productId),
-                  )
-                  const options = products.filter(
-                    (item) => !usedIds.has(item.id) || item.id === line.productId,
-                  )
-                  const selected = products.find((item) => item.id === line.productId)
-
-                  return (
-                    <div
-                      key={line.key}
-                      className="grid gap-3 rounded-xl border border-border bg-surface-muted/50 p-3 sm:grid-cols-[1fr_140px_auto]"
-                    >
-                      <label className="block space-y-1.5">
-                        <span className={labelClass}>Product {index + 1}</span>
-                        <select
-                          value={line.productId}
-                          onChange={(event) =>
-                            updateLine(line.key, { productId: event.target.value })
-                          }
-                          disabled={
-                            productsStatus === 'loading' || products.length === 0
-                          }
-                          className={fieldClass}
-                        >
-                          {productsStatus === 'loading' ? (
-                            <option value="">Loading products…</option>
-                          ) : products.length === 0 ? (
-                            <option value="">No products available</option>
-                          ) : (
-                            <>
-                              <option value="">Select a product</option>
-                              {options.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.name}
-                                </option>
-                              ))}
-                            </>
-                          )}
-                        </select>
-                      </label>
-
-                      <label className="block space-y-1.5">
-                        <span className={labelClass}>Quantity</span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={line.quantity}
-                          onChange={(event) =>
-                            updateLine(line.key, { quantity: event.target.value })
-                          }
-                          className={fieldClass}
-                        />
-                      </label>
-
-                      <div className="flex items-end">
-                        <button
-                          type="button"
-                          onClick={() => removeLine(line.key)}
-                          disabled={lines.length === 1}
-                          className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-border bg-surface-raised text-muted hover:border-danger hover:text-danger disabled:opacity-40"
-                          aria-label={`Remove product ${index + 1}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <label className="block space-y-1.5 sm:col-span-3">
-                        <span className={labelClass}>Product Details</span>
-                        <textarea
-                          value={line.description}
-                          onChange={(event) =>
-                            updateLine(line.key, {
-                              description: event.target.value,
-                            })
-                          }
-                          rows={2}
-                          placeholder="Product details / description"
-                          className="w-full rounded-xl border border-border bg-surface-muted px-3 py-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                        />
-                      </label>
-                      <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2">
-                        <label className="block space-y-1.5">
-                          <span className={labelClass}>Drawing Number</span>
-                          <input
-                            value={line.drawingNumber}
-                            onChange={(event) =>
-                              updateLine(line.key, {
-                                drawingNumber: event.target.value,
-                              })
-                            }
-                            className={fieldClass}
-                          />
-                        </label>
-                        <label className="block space-y-1.5">
-                          <span className={labelClass}>Raw Material Sourcing</span>
-                          <select
-                            value={line.rawMaterialSourcing}
-                            onChange={(event) =>
-                              updateLine(line.key, {
-                                rawMaterialSourcing: event.target.value as
-                                  | 'COMPANY'
-                                  | 'CUSTOMER',
-                              })
-                            }
-                            className={fieldClass}
-                          >
-                            <option value="COMPANY">Company</option>
-                            <option value="CUSTOMER">Customer</option>
-                          </select>
-                        </label>
-                      </div>
-                      <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2">
-                        <label className="block space-y-1.5">
-                          <span className={labelClass}>Status</span>
-                          <select
-                            value={line.lineStatus}
-                            onChange={(event) =>
-                              updateLine(line.key, {
-                                lineStatus: event.target.value as
-                                  | 'OPEN'
-                                  | 'CLOSED',
-                              })
-                            }
-                            className={fieldClass}
-                          >
-                            <option value="OPEN">Open</option>
-                            <option value="CLOSED">Close</option>
-                          </select>
-                        </label>
-                        <label className="block space-y-1.5">
-                          <span className={labelClass}>Line Remarks</span>
-                          <input
-                            value={line.remarks}
-                            onChange={(event) =>
-                              updateLine(line.key, {
-                                remarks: event.target.value,
-                              })
-                            }
-                            className={fieldClass}
-                          />
-                        </label>
-                      </div>
-
-                      {selected ? (
-                        <p className="sm:col-span-3 text-sm text-muted">
-                          {selected.productCode} · {formatInr(selected.unitRate)} /{' '}
-                          {selected.uom.toLowerCase()}
-                          {Number(line.quantity) > 0
-                            ? ` · Line estimate ${formatInr(Number(line.quantity) * selected.unitRate)}`
-                            : ''}
-                        </p>
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
 
               <button
                 type="button"
-                onClick={addLine}
+                onClick={openProductDialog}
                 className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface-muted px-4 text-sm font-bold text-foreground hover:border-accent hover:text-accent"
               >
                 <PlusCircle className="h-4 w-4" />
-                Add another product
+                Add Product
               </button>
+
+              {lines.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
+                  No products added yet.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-border">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
+                      <tr>
+                        <th className="px-3 py-3">Product</th>
+                        <th className="px-3 py-3">Qty</th>
+                        <th className="px-3 py-3">Details</th>
+                        <th className="px-3 py-3">Drawing</th>
+                        <th className="px-3 py-3">Sourcing</th>
+                        <th className="px-3 py-3">Status</th>
+                        <th className="px-3 py-3">Remarks</th>
+                        <th className="px-3 py-3">
+                          <span className="sr-only">Remove</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((line, index) => {
+                        const selected = products.find(
+                          (item) => item.id === line.productId,
+                        )
+                        return (
+                          <tr key={line.key} className="border-t border-border">
+                            <td className="px-3 py-3 font-semibold text-foreground">
+                              {selected?.name ?? 'Product'}
+                              {selected ? (
+                                <span className="mt-0.5 block text-xs font-medium text-muted">
+                                  {selected.productCode}
+                                </span>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-3">{line.quantity}</td>
+                            <td className="max-w-[14rem] px-3 py-3 text-muted">
+                              {line.description.trim() || '—'}
+                            </td>
+                            <td className="px-3 py-3">
+                              {line.drawingNumber.trim() || '—'}
+                            </td>
+                            <td className="px-3 py-3">
+                              {line.rawMaterialSourcing === 'CUSTOMER'
+                                ? 'Customer'
+                                : 'Company'}
+                            </td>
+                            <td className="px-3 py-3">
+                              {line.lineStatus === 'CLOSED' ? 'Close' : 'Open'}
+                            </td>
+                            <td className="max-w-[12rem] px-3 py-3 text-muted">
+                              {line.remarks.trim() || '—'}
+                            </td>
+                            <td className="px-3 py-3">
+                              <button
+                                type="button"
+                                onClick={() => removeLine(line.key)}
+                                className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted hover:border-danger hover:text-danger"
+                                aria-label={`Remove product ${index + 1}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {productsError ? (
                 <p className="text-sm text-danger">{productsError}</p>
@@ -912,96 +850,206 @@ export function CreateOrder() {
                   onClick={() => void handleProductsNext()}
                   className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white hover:brightness-110 disabled:opacity-70"
                 >
-                  {savingDetails ? 'Saving…' : 'Save & Continue'}
-                </button>
-              </div>
-            </SectionCard>
-          ) : null}
-
-          {detailStep === 'schedule' ? (
-            <SectionCard title="2. Schedule">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block space-y-1.5">
-                  <span className={labelClass}>Target Completion Date</span>
-                  <input
-                    type="date"
-                    value={targetDate}
-                    onChange={(event) => setTargetDate(event.target.value)}
-                    className={fieldClass}
-                  />
-                  {fieldErrors.targetDate ? (
-                    <p className="text-sm text-danger">{fieldErrors.targetDate}</p>
-                  ) : null}
-                </label>
-
-                <label className="block space-y-1.5">
-                  <span className={labelClass}>Priority</span>
-                  <select
-                    value={priority}
-                    onChange={(event) =>
-                      setPriority(event.target.value as Priority)
-                    }
-                    className={fieldClass}
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="High">High</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
-                </label>
-              </div>
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-                <button
-                  type="button"
-                  onClick={() => setDetailStep('products')}
-                  className="min-h-12 rounded-xl border border-border px-6 text-base font-bold"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  disabled={savingDetails}
-                  onClick={() => void handleScheduleNext()}
-                  className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white hover:brightness-110 disabled:opacity-70"
-                >
-                  {savingDetails ? 'Saving…' : 'Save & Continue'}
-                </button>
-              </div>
-            </SectionCard>
-          ) : null}
-
-          {detailStep === 'notes' ? (
-            <SectionCard title="3. Notes">
-              <label className="block space-y-1.5">
-                <span className={labelClass}>
-                  Internal Notes / Special Instructions
-                </span>
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={4}
-                  placeholder="Drawing revision, packing notes, inspection requirements…"
-                  className="w-full rounded-xl border border-border bg-surface-muted px-3 py-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                />
-              </label>
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-                <button
-                  type="button"
-                  onClick={() => setDetailStep('schedule')}
-                  className="min-h-12 rounded-xl border border-border px-6 text-base font-bold"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  disabled={savingDetails}
-                  onClick={() => void handleNotesFinish()}
-                  className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white hover:brightness-110 disabled:opacity-70"
-                >
                   {savingDetails ? 'Saving…' : 'Finish Order'}
                 </button>
               </div>
             </SectionCard>
-          ) : null}
+
+            {productDialogOpen ? (
+              <div
+                className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 sm:items-center"
+                onClick={closeProductDialog}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="add-product-title"
+                  className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-border bg-surface-raised p-5 shadow-lg"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h3
+                        id="add-product-title"
+                        className="text-lg font-bold text-foreground"
+                      >
+                        Add Product
+                      </h3>
+                      <p className="text-sm text-muted">
+                        Enter the product details, then save to add it to the
+                        order.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeProductDialog}
+                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted hover:text-foreground"
+                      aria-label="Close"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Product</span>
+                      <select
+                        value={draft.productId}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            productId: event.target.value,
+                          }))
+                        }
+                        disabled={
+                          productsStatus === 'loading' || products.length === 0
+                        }
+                        className={fieldClass}
+                      >
+                        {productsStatus === 'loading' ? (
+                          <option value="">Loading products…</option>
+                        ) : products.length === 0 ? (
+                          <option value="">No products available</option>
+                        ) : (
+                          <>
+                            <option value="">Select a product</option>
+                            {products
+                              .filter(
+                                (item) =>
+                                  !lines.some((line) => line.productId === item.id),
+                              )
+                              .map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                          </>
+                        )}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Quantity</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={draft.quantity}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            quantity: event.target.value,
+                          }))
+                        }
+                        className={fieldClass}
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className={labelClass}>Product Details</span>
+                      <textarea
+                        value={draft.description}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        rows={2}
+                        placeholder="Product details / description"
+                        className="w-full rounded-xl border border-border bg-surface-muted px-3 py-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Drawing Number</span>
+                      <input
+                        value={draft.drawingNumber}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            drawingNumber: event.target.value,
+                          }))
+                        }
+                        className={fieldClass}
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Raw Material Sourcing</span>
+                      <select
+                        value={draft.rawMaterialSourcing}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            rawMaterialSourcing: event.target.value as
+                              | 'COMPANY'
+                              | 'CUSTOMER',
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="COMPANY">Company</option>
+                        <option value="CUSTOMER">Customer</option>
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Status</span>
+                      <select
+                        value={draft.lineStatus}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            lineStatus: event.target.value as 'OPEN' | 'CLOSED',
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="OPEN">Open</option>
+                        <option value="CLOSED">Close</option>
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Line Remarks</span>
+                      <input
+                        value={draft.remarks}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            remarks: event.target.value,
+                          }))
+                        }
+                        className={fieldClass}
+                      />
+                    </label>
+                  </div>
+
+                  {draftError ? (
+                    <p className="mt-3 text-sm font-medium text-danger">
+                      {draftError}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={closeProductDialog}
+                      className="min-h-12 rounded-xl border border-border px-6 text-base font-bold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveDraftProduct}
+                      className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white hover:brightness-110"
+                    >
+                      Save Product
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
         </div>
       )}
     </div>
