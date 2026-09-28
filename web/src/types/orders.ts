@@ -282,11 +282,30 @@ export interface CreateBatchPayload {
   status?: string
   batchNo: string
   plannedQuantity: number
+  bufferQty?: number
+  totalBatchQty?: number
   targetDispatchDate: string
   priority: OrderPriorityApi
 }
 
 export interface CreateBatchResponse {
+  success: boolean
+  message: string
+  batch?: ProductionBatch
+}
+
+export interface UpdateBatchPayload {
+  batchNo?: string
+  plannedQuantity?: number
+  bufferQty?: number
+  totalBatchQty?: number
+  targetDispatchDate?: string
+  priority?: OrderPriorityApi
+  status?: string
+  productionInCharge?: string
+}
+
+export interface UpdateBatchResponse {
   success: boolean
   message: string
   batch?: ProductionBatch

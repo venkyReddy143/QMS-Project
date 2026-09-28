@@ -58,7 +58,7 @@ export function CreateBatch() {
   const { user } = useAuth()
   const [order, setOrder] = useState<ProductionOrder | null>(null)
   const [batches, setBatches] = useState<ProductionBatch[]>([])
-  const [machines, setMachines] = useState<AdminMachine[]>([])
+  const [, setMachines] = useState<AdminMachine[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
