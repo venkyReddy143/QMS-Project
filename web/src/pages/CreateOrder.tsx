@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { CheckCircle2, PlusCircle, Trash2, X } from 'lucide-react'
+import { CheckCircle2, Pencil, PlusCircle, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchEmployeesApi } from '../lib/api/batches'
 import { fetchNextOrderNoApi } from '../lib/api/orders'
@@ -126,6 +126,7 @@ export function CreateOrder() {
   const [productDialogOpen, setProductDialogOpen] = useState(false)
   const [draft, setDraft] = useState<ProductLine>(emptyLine())
   const [draftError, setDraftError] = useState<string | null>(null)
+  const [editingKey, setEditingKey] = useState<string | null>(null)
   const [targetDate, setTargetDate] = useState(todayIsoDate())
   const [priority, setPriority] = useState<Priority>('Normal')
   const [notes, setNotes] = useState('')
@@ -268,12 +269,21 @@ export function CreateOrder() {
   function openProductDialog() {
     setDraft(emptyLine())
     setDraftError(null)
+    setEditingKey(null)
+    setProductDialogOpen(true)
+  }
+
+  function openEditDialog(line: ProductLine) {
+    setDraft({ ...line })
+    setDraftError(null)
+    setEditingKey(line.key)
     setProductDialogOpen(true)
   }
 
   function closeProductDialog() {
     setProductDialogOpen(false)
     setDraftError(null)
+    setEditingKey(null)
   }
 
   function saveDraftProduct() {
@@ -286,15 +296,26 @@ export function CreateOrder() {
       setDraftError('Quantity must be a whole number of at least 1.')
       return
     }
-    if (lines.some((line) => line.productId === draft.productId)) {
+    if (
+      lines.some(
+        (line) => line.productId === draft.productId && line.key !== editingKey,
+      )
+    ) {
       setDraftError('This product is already on the order.')
       return
     }
 
-    setLines((current) => [...current, draft])
+    if (editingKey) {
+      setLines((current) =>
+        current.map((line) => (line.key === editingKey ? draft : line)),
+      )
+    } else {
+      setLines((current) => [...current, draft])
+    }
     setFieldErrors((current) => ({ ...current, products: undefined }))
     setProductDialogOpen(false)
     setDraftError(null)
+    setEditingKey(null)
   }
 
   function removeLine(key: string) {
@@ -313,6 +334,7 @@ export function CreateOrder() {
     setProductDialogOpen(false)
     setDraft(emptyLine())
     setDraftError(null)
+    setEditingKey(null)
     setTargetDate(todayIsoDate())
     setPriority('Normal')
     setNotes('')
@@ -777,7 +799,7 @@ export function CreateOrder() {
                         <th className="px-3 py-3">Status</th>
                         <th className="px-3 py-3">Remarks</th>
                         <th className="px-3 py-3">
-                          <span className="sr-only">Remove</span>
+                          <span className="sr-only">Actions</span>
                         </th>
                       </tr>
                     </thead>
@@ -815,14 +837,24 @@ export function CreateOrder() {
                               {line.remarks.trim() || '—'}
                             </td>
                             <td className="px-3 py-3">
-                              <button
-                                type="button"
-                                onClick={() => removeLine(line.key)}
-                                className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted hover:border-danger hover:text-danger"
-                                aria-label={`Remove product ${index + 1}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditDialog(line)}
+                                  className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted hover:border-accent hover:text-accent"
+                                  aria-label={`Edit product ${index + 1}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeLine(line.key)}
+                                  className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted hover:border-danger hover:text-danger"
+                                  aria-label={`Remove product ${index + 1}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         )
@@ -873,11 +905,12 @@ export function CreateOrder() {
                         id="add-product-title"
                         className="text-lg font-bold text-foreground"
                       >
-                        Add Product
+                        {editingKey ? 'Edit Product' : 'Add Product'}
                       </h3>
                       <p className="text-sm text-muted">
-                        Enter the product details, then save to add it to the
-                        order.
+                        {editingKey
+                          ? 'Update the product details, then save to apply the changes.'
+                          : 'Enter the product details, then save to add it to the order.'}
                       </p>
                     </div>
                     <button
@@ -916,7 +949,12 @@ export function CreateOrder() {
                             {products
                               .filter(
                                 (item) =>
-                                  !lines.some((line) => line.productId === item.id),
+                                  item.id === draft.productId ||
+                                  !lines.some(
+                                    (line) =>
+                                      line.productId === item.id &&
+                                      line.key !== editingKey,
+                                  ),
                               )
                               .map((item) => (
                                 <option key={item.id} value={item.id}>
@@ -1044,7 +1082,7 @@ export function CreateOrder() {
                       onClick={saveDraftProduct}
                       className="min-h-12 rounded-xl bg-accent px-8 text-base font-bold text-white hover:brightness-110"
                     >
-                      Save Product
+                      {editingKey ? 'Update Product' : 'Save Product'}
                     </button>
                   </div>
                 </div>

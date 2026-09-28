@@ -31,9 +31,15 @@ export interface IBatchMachine {
 export interface IBatchProcessMachine {
   processStepName: string
   sequence: number
+  hoursPerPiece?: number
   machineId?: Types.ObjectId
   machineCode?: string
   machineName?: string
+  machines?: Array<{
+    machineId: Types.ObjectId
+    machineCode: string
+    machineName: string
+  }>
 }
 
 export interface IBatchAssignment {
@@ -130,9 +136,20 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
         {
           processStepName: { type: String, required: true, trim: true },
           sequence: { type: Number, required: true, min: 1 },
+          hoursPerPiece: { type: Number, min: 0, default: 0 },
           machineId: { type: Schema.Types.ObjectId, ref: 'Machine' },
           machineCode: { type: String, trim: true, default: '' },
           machineName: { type: String, trim: true, default: '' },
+          machines: {
+            type: [
+              {
+                machineId: { type: Schema.Types.ObjectId, ref: 'Machine', required: true },
+                machineCode: { type: String, trim: true, default: '' },
+                machineName: { type: String, trim: true, default: '' },
+              },
+            ],
+            default: [],
+          },
         },
       ],
       default: [],
@@ -171,7 +188,7 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
       type: String,
       enum: BATCH_STATUSES,
       required: true,
-      default: 'CREATED',
+      default: 'OPEN',
     },
     productionInCharge: {
       type: String,

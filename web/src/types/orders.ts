@@ -193,9 +193,30 @@ export interface BatchAssignedMachine {
 export interface BatchProcessMachine {
   processStepName: string
   sequence: number
+  hoursPerPiece?: number
   machineId?: string
   machineCode?: string
   machineName?: string
+  machines?: Array<{
+    machineId: string
+    machineCode?: string
+    machineName?: string
+  }>
+}
+
+export interface UpdateBatchProcessStepsPayload {
+  steps: Array<{
+    processStepName: string
+    sequence?: number
+    hoursPerPiece?: number
+    machineIds?: string[]
+  }>
+}
+
+export interface UpdateBatchProcessStepsResponse {
+  success: boolean
+  message: string
+  batch?: ProductionBatch
 }
 
 export interface BatchProcessQtyStep {

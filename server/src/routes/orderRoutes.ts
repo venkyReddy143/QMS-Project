@@ -1,21 +1,6 @@
 import { Router } from 'express'
-import {
-  createOrder,
-  getOrder,
-  listOrders,
-  nextOrderNo,
-  updateOrderDetails,
-  updateOrderPlanning,
-} from '../controllers/orderController'
-import {
-  assignBatch,
-  createBatch,
-  listBatches,
-  logBatchTime,
-  activateBatch,
-  updateBatchSerials,
-  assignSerialsToShift,
-} from '../controllers/batchController'
+import { createOrder, getOrder, listOrders, nextOrderNo, updateOrderDetails, updateOrderPlanning } from '../controllers/orderController'
+import { assignBatch, createBatch, listBatches, logBatchTime, activateBatch, updateBatchProcessSteps, updateBatchSerials, assignSerialsToShift } from '../controllers/batchController'
 import { requireAuth } from '../middleware/auth'
 
 export const orderRoutes = Router()
@@ -28,6 +13,7 @@ orderRoutes.post('/:orderId/batches', createBatch)
 orderRoutes.get('/:orderId/batches', listBatches)
 orderRoutes.post('/:orderId/batches/:batchId/assign', assignBatch)
 orderRoutes.post('/:orderId/batches/:batchId/time-logs', logBatchTime)
+orderRoutes.patch('/:orderId/batches/:batchId/process-steps', updateBatchProcessSteps)
 orderRoutes.post('/:orderId/batches/:batchId/activate', activateBatch)
 orderRoutes.post('/:orderId/batches/:batchId/serials', updateBatchSerials)
 orderRoutes.post('/:orderId/batches/:batchId/assign-serials', assignSerialsToShift)

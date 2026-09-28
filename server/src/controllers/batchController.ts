@@ -140,9 +140,15 @@ function serializeBatch(
     processMachines?: Array<{
       processStepName: string
       sequence: number
+      hoursPerPiece?: number
       machineId?: { toString(): string }
       machineCode?: string
       machineName?: string
+      machines?: Array<{
+        machineId: { toString(): string }
+        machineCode: string
+        machineName: string
+      }>
     }>
     processStepNames?: string[]
     productDescription?: string
@@ -184,9 +190,15 @@ function serializeBatch(
   const processMachines = (batch.processMachines ?? []).map((item) => ({
     processStepName: item.processStepName,
     sequence: item.sequence,
+    hoursPerPiece: item.hoursPerPiece ?? 0,
     machineId: item.machineId ? String(item.machineId) : '',
     machineCode: item.machineCode ?? '',
     machineName: item.machineName ?? '',
+    machines: (item.machines ?? []).map((machine) => ({
+      machineId: String(machine.machineId),
+      machineCode: machine.machineCode ?? '',
+      machineName: machine.machineName ?? '',
+    })),
   }))
   const processStepNames = (batch.processStepNames ?? []).filter(Boolean)
   if (batch.processStepName && !processStepNames.includes(batch.processStepName)) {
@@ -524,7 +536,7 @@ export async function createBatch(
     const deferSerials =
       req.body.deferSerials === true ||
       req.body.deferSerials === 'true' ||
-      String(req.body.status ?? '').toUpperCase() === 'CREATED'
+      String(req.body.status ?? '').toUpperCase() === 'OPEN'
     const firstProcessName =
       processStepName ||
       (productLine?.processSteps ?? [])[0]?.name ||
@@ -602,7 +614,7 @@ export async function createBatch(
       totalBatchQty,
       targetDispatchDate,
       priority: mapPriority(req.body.priority),
-      status: mapStatus(req.body.status) ?? (deferSerials ? 'CREATED' : 'SCHEDULED'),
+      status: mapStatus(req.body.status) ?? (deferSerials ? 'OPEN' : 'SCHEDULED'),
       productionInCharge: String(req.body.productionInCharge ?? '').trim(),
       completedQuantity: 0,
       dispatchedQuantity: 0,
@@ -628,7 +640,7 @@ export async function createBatch(
     res.status(201).json({
       success: true,
       message: deferSerials
-        ? `Batch ${batchNo} created. Activate to generate serial numbers.`
+        ? `Batch ${batchNo} created and Open. Define process steps and assign machines, then activate.`
         : `Batch ${batchNo} created with ${serials.length} serial numbers.`,
       batch: serializeBatch(populated, order.orderNo),
       allocation: {
@@ -1054,7 +1066,7 @@ export async function activateBatch(
       return
     }
 
-    if (batch.status !== 'CREATED' && (batch.serials?.length ?? 0) > 0) {
+    if (batch.status !== 'OPEN' && (batch.serials?.length ?? 0) > 0) {
       res.status(400).json({
         success: false,
         message: 'Batch is already active with serial numbers.',
@@ -1126,11 +1138,160 @@ export async function activateBatch(
 
     batch.status = 'ACTIVE'
     await batch.save()
+
     const populated = await batch.populate('createdBy', 'name')
 
     res.json({
       success: true,
       message: `Batch ${batch.batchNo} activated with ${batch.serials.length} serial records.`,
+      batch: serializeBatch(populated, batch.orderNo),
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+interface ProcessStepInput {
+  processStepName?: string
+  sequence?: number
+  hoursPerPiece?: number
+  machineId?: string
+  machineIds?: string[]
+}
+
+export async function updateBatchProcessSteps(
+  req: Request<
+    { orderId?: string; batchId?: string },
+    unknown,
+    { steps?: ProcessStepInput[] }
+  >,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      })
+      return
+    }
+
+    const batchId = String(req.params.batchId ?? '').trim()
+    if (!batchId || !looksLikeObjectId(batchId)) {
+      res.status(400).json({ success: false, message: 'Batch ID is required.' })
+      return
+    }
+
+    const batch = await DeliveryBatch.findById(batchId)
+    if (!batch) {
+      res.status(404).json({ success: false, message: 'Batch not found.' })
+      return
+    }
+
+    if (batch.status !== 'OPEN') {
+      res.status(400).json({
+        success: false,
+        message: 'Process steps can only be defined or changed while the batch is Open.',
+      })
+      return
+    }
+
+    const steps = Array.isArray(req.body.steps) ? req.body.steps : []
+    const seenNames = new Set<string>()
+    const nextMachines: Array<{
+      processStepName: string
+      sequence: number
+      hoursPerPiece: number
+      machineId?: mongoose.Types.ObjectId
+      machineCode: string
+      machineName: string
+      machines: Array<{
+        machineId: mongoose.Types.ObjectId
+        machineCode: string
+        machineName: string
+      }>
+    }> = []
+
+    let sequence = 0
+    for (const item of steps) {
+      const processStepName = String(item.processStepName ?? '').trim()
+      if (!processStepName) continue
+      const key = processStepName.toLowerCase()
+      if (seenNames.has(key)) continue
+      seenNames.add(key)
+      sequence += 1
+
+      const rawMachineIds = Array.isArray(item.machineIds)
+        ? item.machineIds
+        : item.machineId
+          ? [item.machineId]
+          : []
+      const machines: Array<{
+        machineId: mongoose.Types.ObjectId
+        machineCode: string
+        machineName: string
+      }> = []
+      const seenMachineIds = new Set<string>()
+      for (const rawId of rawMachineIds) {
+        const id = String(rawId ?? '').trim()
+        if (!id || !looksLikeObjectId(id) || seenMachineIds.has(id)) continue
+        seenMachineIds.add(id)
+        const machine = await Machine.findById(id)
+        if (machine) {
+          machines.push({
+            machineId: machine._id,
+            machineCode: machine.machineCode,
+            machineName: machine.name,
+          })
+        }
+      }
+
+      nextMachines.push({
+        processStepName,
+        sequence: toNumber(item.sequence) ?? sequence,
+        hoursPerPiece: toNumber(item.hoursPerPiece) ?? 0,
+        machineId: machines[0]?.machineId,
+        machineCode: machines[0]?.machineCode ?? '',
+        machineName: machines[0]?.machineName ?? '',
+        machines,
+      })
+    }
+
+    if (nextMachines.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Add at least one process step.',
+      })
+      return
+    }
+
+    nextMachines.sort((a, b) => a.sequence - b.sequence)
+
+    batch.processMachines = nextMachines
+    batch.processStepNames = nextMachines.map((item) => item.processStepName)
+
+    const assignedById = new Map<
+      string,
+      { machineId: mongoose.Types.ObjectId; machineCode: string; machineName: string }
+    >()
+    for (const item of nextMachines) {
+      for (const machine of item.machines) {
+        assignedById.set(machine.machineId.toString(), {
+          machineId: machine.machineId,
+          machineCode: machine.machineCode,
+          machineName: machine.machineName,
+        })
+      }
+    }
+    batch.assignedMachines = [...assignedById.values()]
+
+    await batch.save()
+    const populated = await batch.populate('createdBy', 'name')
+
+    res.json({
+      success: true,
+      message: 'Process steps updated.',
       batch: serializeBatch(populated, batch.orderNo),
     })
   } catch (error) {

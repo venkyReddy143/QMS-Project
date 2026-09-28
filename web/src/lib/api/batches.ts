@@ -4,8 +4,12 @@ import type {
   EmployeesResponse,
   ListBatchesResponse,
   ProductionBatch,
+  UpdateBatchPayload,
+  UpdateBatchProcessStepsPayload,
+  UpdateBatchProcessStepsResponse,
+  UpdateBatchResponse,
 } from '../../types/orders'
-import { get, post } from './http'
+import { get, patch, post } from './http'
 
 export function fetchAllBatchesApi() {
   return get<ListBatchesResponse>('/batches/listBatches')
@@ -18,6 +22,24 @@ export function fetchBatchesApi(orderId: string) {
 export function createBatchApi(orderId: string, payload: CreateBatchPayload) {
   return post<CreateBatchResponse, CreateBatchPayload>(
     `/orders/${orderId}/batches`,
+    payload,
+  )
+}
+
+export function updateBatchApi(batchId: string, payload: UpdateBatchPayload) {
+  return patch<UpdateBatchResponse, UpdateBatchPayload>(
+    `/batches/updateBatch/${batchId}`,
+    payload,
+  )
+}
+
+export function updateBatchProcessStepsApi(
+  orderId: string,
+  batchId: string,
+  payload: UpdateBatchProcessStepsPayload,
+) {
+  return patch<UpdateBatchProcessStepsResponse, UpdateBatchProcessStepsPayload>(
+    `/orders/${orderId}/batches/${batchId}/process-steps`,
     payload,
   )
 }

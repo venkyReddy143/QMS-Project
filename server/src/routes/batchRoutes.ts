@@ -5,6 +5,7 @@ import {
   listBatches,
   updateBatch,
   activateBatch,
+  updateBatchProcessSteps,
   updateBatchSerials,
   assignSerialsToShift,
 } from '../controllers/batchController'
@@ -18,6 +19,7 @@ batchRoutes.get('/listBatches', listBatches)
 batchRoutes.get('/getBatch/:id', getBatch)
 batchRoutes.put('/updateBatch/:id', updateBatch)
 batchRoutes.patch('/updateBatch/:id', updateBatch)
+batchRoutes.patch('/:batchId/process-steps', updateBatchProcessSteps)
 batchRoutes.post('/:batchId/activate', activateBatch)
 batchRoutes.post('/:batchId/serials', updateBatchSerials)
 batchRoutes.post('/:batchId/assign-serials', assignSerialsToShift)

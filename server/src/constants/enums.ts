@@ -40,7 +40,7 @@ export const MACHINE_HEALTH_STATUSES = [
 export type MachineHealthStatus = (typeof MACHINE_HEALTH_STATUSES)[number]
 
 export const BATCH_STATUSES = [
-  'CREATED',
+  'OPEN',
   'ACTIVE',
   'SCHEDULED',
   'RELEASED',

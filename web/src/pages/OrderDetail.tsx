@@ -562,31 +562,14 @@ export function OrderDetail() {
                             onClick={() => setDetailLineId(line.productId)}
                             className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
                           >
-                            View Order Line Details
+                            Details
                           </button>
                           <button
                             type="button"
                             onClick={() => setView('batches')}
                             className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
                           >
-                            View Production Batch
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedProcessLine(
-                                expandedProcessLine === line.productId
-                                  ? null
-                                  : line.productId,
-                              )
-                            }
-                            className={`rounded-lg border px-3 py-1.5 text-xs font-bold hover:border-accent ${
-                              expandedProcessLine === line.productId
-                                ? 'border-accent bg-accent text-white'
-                                : 'border-border'
-                            }`}
-                          >
-                            View Process Steps
+                            Production
                           </button>
                         </div>
                       </td>
