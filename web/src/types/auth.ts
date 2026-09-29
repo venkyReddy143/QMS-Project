@@ -64,12 +64,12 @@ const ROLE_ACCESS: Record<
   SUPERVISOR: {
     role: 'Production Manager',
     defaultPath: '/orders',
-    accessPaths: ['/orders', '/production-planning', '/my-tasks'],
+    accessPaths: ['/orders', '/planning', '/production-planning', '/my-tasks'],
   },
   SHOP_FLOOR_OPERATOR: {
     role: 'Floor Manager',
     defaultPath: '/orders',
-    accessPaths: ['/orders', '/production-planning', '/my-tasks'],
+    accessPaths: ['/orders', '/planning', '/production-planning', '/my-tasks'],
   },
   SUPER_ADMIN: {
     role: 'Super Admin',
@@ -80,6 +80,7 @@ const ROLE_ACCESS: Record<
       '/order',
       '/orders',
       '/production',
+      '/planning',
       '/masters',
       '/create-order',
       '/production-planning',

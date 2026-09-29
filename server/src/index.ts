@@ -14,6 +14,7 @@ import { batchRoutes } from './routes/batchRoutes'
 import { executionRoutes } from './routes/executionRoutes'
 import { masterRoutes } from './routes/masterRoutes'
 import { orderRoutes } from './routes/orderRoutes'
+import { planningRoutes } from './routes/planningRoutes'
 
 const app = express()
 const PORT = Number(process.env.PORT) || 5000
@@ -69,6 +70,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api', masterRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/batches', batchRoutes)
+app.use('/api/planning', planningRoutes)
 app.use('/api', executionRoutes)
 
 // =========================

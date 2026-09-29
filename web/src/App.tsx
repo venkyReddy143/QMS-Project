@@ -11,6 +11,7 @@ import { AdminUsers } from './pages/AdminUsers'
 import { MyTasks } from './pages/MyTasks'
 import { OrderDetail } from './pages/OrderDetail'
 import { OrdersList } from './pages/OrdersList'
+import { PlanningModule } from './pages/PlanningModule'
 import { ProductionPlanning } from './pages/ProductionPlanning'
 import { CreateBatch } from './pages/CreateBatch'
 import { ProductStock } from './pages/ProductStock'
@@ -263,6 +264,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute path="/orders">
               <OrderDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/planning"
+          element={
+            <ProtectedRoute path="/planning">
+              <PlanningModule />
             </ProtectedRoute>
           }
         />

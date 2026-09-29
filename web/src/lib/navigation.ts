@@ -3,6 +3,7 @@ import {
   ClipboardList,
   Cog,
   Factory,
+  CalendarDays,
   LayoutDashboard,
   ListChecks,
   PlusCircle,
@@ -55,6 +56,14 @@ export const navItems: NavItem[] = [
     description: 'Create a new manufacturing order inquiry',
     icon: PlusCircle,
     roles: ['Order Creator'],
+  },
+  {
+    id: 'planning',
+    label: 'Production Planning',
+    path: '/planning',
+    description: 'Plan batch schedules, machine allocations, and operator assignments',
+    icon: CalendarDays,
+    roles: ['Production Manager', 'Floor Manager'],
   },
   {
     id: 'production-planning',
@@ -135,6 +144,12 @@ export const superAdminNav: SuperAdminNavNode[] = [
     label: 'Dashboard',
     path: '/dashboard',
     icon: LayoutDashboard,
+  },
+  {
+    id: 'planning',
+    label: 'Production Planning',
+    path: '/planning',
+    icon: CalendarDays,
   },
   {
     id: 'create-order',
