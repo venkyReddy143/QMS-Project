@@ -10,7 +10,7 @@ import { DeliveryBatch } from '../models/DeliveryBatch'
 import { Machine } from '../models/Machine'
 import { ProductionOrder } from '../models/ProductionOrder'
 import { User } from '../models/User'
-import { buildBatchSerials } from '../utils/serialNumber'
+import { buildBatchSerials, serialPrefix } from '../utils/serialNumber'
 
 interface BatchBody {
   orderId?: string
@@ -391,13 +391,42 @@ async function allocationForOrder(
   return summary?.allocated ?? 0
 }
 
-async function nextSerialSequence(orderId: mongoose.Types.ObjectId) {
+async function nextSerialSequence(
+  orderId: mongoose.Types.ObjectId,
+  orderNo: string,
+  batchNo: string,
+) {
   const [summary] = await DeliveryBatch.aggregate<{ maxSeq: number }>([
     { $match: { orderId } },
     { $unwind: { path: '$serials', preserveNullAndEmptyArrays: false } },
     { $group: { _id: null, maxSeq: { $max: '$serials.sequence' } } },
   ])
-  return (summary?.maxSeq ?? 0) + 1
+
+  // Serial numbers are unique across ALL batches (unique index), and the number is built
+  // from the trailing digits of the order no + batch no. Different orders/batches can map to
+  // the same prefix (e.g. ORD-2025-0001 and ORD-2026-0001), so also continue after the highest
+  // sequence already used under this exact prefix, whichever order it belongs to.
+  const prefix = serialPrefix(orderNo, batchNo)
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const [prefixSummary] = await DeliveryBatch.aggregate<{ maxSeq: number }>([
+    { $match: { 'serials.serialNumber': { $regex: `^${escaped}` } } },
+    { $unwind: '$serials' },
+    { $match: { 'serials.serialNumber': { $regex: `^${escaped}` } } },
+    {
+      $group: {
+        _id: null,
+        maxSeq: {
+          $max: {
+            $toInt: {
+              $arrayElemAt: [{ $split: ['$serials.serialNumber', '-'] }, -1],
+            },
+          },
+        },
+      },
+    },
+  ])
+
+  return Math.max(summary?.maxSeq ?? 0, prefixSummary?.maxSeq ?? 0) + 1
 }
 
 export async function createBatch(
@@ -548,7 +577,7 @@ export async function createBatch(
           orderNo: order.orderNo,
           batchNo,
           quantity: plannedQuantity,
-          startSequence: await nextSerialSequence(order._id),
+          startSequence: await nextSerialSequence(order._id, order.orderNo, batchNo),
           currentProcessStepName: firstProcessName,
         })
 
@@ -1125,7 +1154,7 @@ export async function activateBatch(
         orderNo: batch.orderNo,
         batchNo: batch.batchNo,
         quantity: batch.plannedQuantity,
-        startSequence: await nextSerialSequence(batch.orderId),
+        startSequence: await nextSerialSequence(batch.orderId, batch.orderNo, batch.batchNo),
         currentProcessStepName: firstStep,
       })
     } else {

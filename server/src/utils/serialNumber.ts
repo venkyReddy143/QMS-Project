@@ -43,6 +43,16 @@ export function formatSerialNumber(params: {
   return serial.replace(/--+/g, '-').replace(/^-|-$/g, '')
 }
 
+/** Common prefix of every serial of an order/batch, e.g. "TB-HP-2026-0001-B01-". */
+export function serialPrefix(orderNo: string, batchNo: string): string {
+  const sample = formatSerialNumber({
+    orderNo,
+    batchNumber: parseBatchNumber(batchNo),
+    sequence: 0,
+  })
+  return sample.slice(0, sample.length - SERIAL_NUMBER_CONFIG.sequencePad)
+}
+
 export function buildBatchSerials(params: {
   orderNo: string
   batchNo: string
