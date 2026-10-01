@@ -16,6 +16,8 @@ export interface ProductionPlan {
   productCode: string
   productName: string
   planDate: string
+  startDate?: string
+  endDate?: string
   shift: string
   processStepId?: string
   processStepName: string
@@ -110,7 +112,9 @@ export interface PlanningOptions {
 export interface CreatePlanPayload {
   batchId: string
   productId: string
-  planDate: string
+  planDate?: string
+  startDate?: string
+  endDate?: string
   shift: string
   processStepId?: string
   processStepName: string
@@ -127,6 +131,8 @@ export interface UpdatePlanPayload {
   batchId?: string
   productId?: string
   planDate?: string
+  startDate?: string
+  endDate?: string
   shift?: string
   processStepId?: string
   processStepName?: string

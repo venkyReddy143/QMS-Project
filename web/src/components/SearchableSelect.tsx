@@ -20,6 +20,7 @@ interface SearchableSelectProps {
   className?: string
   id?: string
   allowClear?: boolean
+  size?: 'sm' | 'md'
 }
 
 export function SearchableSelect({
@@ -34,6 +35,7 @@ export function SearchableSelect({
   className = '',
   id,
   allowClear = false,
+  size = 'md',
 }: SearchableSelectProps) {
   const generatedId = useId()
   const selectId = id || generatedId
@@ -98,7 +100,7 @@ export function SearchableSelect({
       {label ? (
         <label
           htmlFor={selectId}
-          className="mb-1.5 block text-sm font-bold text-foreground"
+          className={`${size === 'sm' ? 'mb-1 text-xs' : 'mb-1.5 text-sm'} block font-bold text-foreground`}
         >
           {label} {required && <span className="text-danger">*</span>}
         </label>
@@ -122,7 +124,9 @@ export function SearchableSelect({
             setIsOpen(false)
           }
         }}
-        className={`flex min-h-12 w-full cursor-pointer items-center justify-between rounded-xl border px-3 text-base outline-none transition ${
+        className={`flex ${
+          size === 'sm' ? 'min-h-9 h-9 px-2.5 text-xs rounded-lg' : 'min-h-12 px-3 text-base rounded-xl'
+        } w-full cursor-pointer items-center justify-between border outline-none transition ${
           disabled
             ? 'cursor-not-allowed border-border/50 bg-surface-muted/50 opacity-60 text-muted'
             : error
@@ -155,11 +159,11 @@ export function SearchableSelect({
               className="rounded-lg p-1 text-muted hover:bg-surface hover:text-foreground"
               title="Clear selection"
             >
-              <X className="h-4 w-4" />
+              <X className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
             </button>
           )}
           <ChevronDown
-            className={`h-4 w-4 text-muted transition-transform duration-200 ${
+            className={`${size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-muted transition-transform duration-200 ${
               isOpen ? 'rotate-180 text-accent' : ''
             }`}
           />
@@ -176,14 +180,16 @@ export function SearchableSelect({
           {/* Search Box */}
           <div className="border-b border-border p-2">
             <div className="relative flex items-center">
-              <Search className="absolute left-2.5 h-4 w-4 text-muted" />
+              <Search className="absolute left-2.5 h-3.5 w-3.5 text-muted" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search..."
-                className="w-full rounded-lg border border-border bg-surface-muted py-1.5 pl-8 pr-3 text-sm text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                className={`w-full rounded-lg border border-border bg-surface-muted ${
+                  size === 'sm' ? 'py-1 pl-8 pr-2.5 text-xs' : 'py-1.5 pl-8 pr-3 text-sm'
+                } text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent`}
                 onClick={(e) => e.stopPropagation()}
               />
               {searchTerm && (
@@ -199,7 +205,7 @@ export function SearchableSelect({
           </div>
 
           {/* Options List */}
-          <div className="max-h-56 overflow-y-auto p-1 text-sm">
+          <div className={`max-h-56 overflow-y-auto p-1 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
             {filteredOptions.length === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-muted">
                 No matches found
@@ -212,7 +218,9 @@ export function SearchableSelect({
                     key={opt.value}
                     type="button"
                     onClick={() => handleSelect(opt.value)}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition ${
+                    className={`flex w-full items-center justify-between rounded-lg ${
+                      size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-left'
+                    } transition ${
                       isSelected
                         ? 'bg-accent/10 font-bold text-accent'
                         : 'text-foreground hover:bg-surface-muted'

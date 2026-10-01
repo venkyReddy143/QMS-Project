@@ -41,6 +41,14 @@ async function generatePlanNo(planDate?: Date): Promise<string> {
 }
 
 function serializePlan(doc: any) {
+  const planDateStr = doc.planDate instanceof Date ? doc.planDate.toISOString().slice(0, 10) : doc.planDate
+  const startDateStr = doc.startDate
+    ? (doc.startDate instanceof Date ? doc.startDate.toISOString().slice(0, 10) : doc.startDate)
+    : planDateStr
+  const endDateStr = doc.endDate
+    ? (doc.endDate instanceof Date ? doc.endDate.toISOString().slice(0, 10) : doc.endDate)
+    : planDateStr
+
   return {
     id: doc._id.toString(),
     planNo: doc.planNo,
@@ -51,7 +59,9 @@ function serializePlan(doc: any) {
     productId: doc.productId?.toString(),
     productCode: doc.productCode,
     productName: doc.productName,
-    planDate: doc.planDate instanceof Date ? doc.planDate.toISOString().slice(0, 10) : doc.planDate,
+    planDate: planDateStr,
+    startDate: startDateStr,
+    endDate: endDateStr,
     shift: doc.shift,
     processStepId: doc.processStepId?.toString(),
     processStepName: doc.processStepName,
@@ -93,7 +103,15 @@ export async function listPlans(req: Request, res: Response, next: NextFunction)
         start.setUTCHours(0, 0, 0, 0)
         const end = new Date(d)
         end.setUTCHours(23, 59, 59, 999)
-        query.planDate = { $gte: start, $lte: end }
+        query.$or = [
+          { planDate: { $gte: start, $lte: end } },
+          {
+            $and: [
+              { startDate: { $lte: end } },
+              { endDate: { $gte: start } },
+            ],
+          },
+        ]
       }
     }
 
@@ -279,6 +297,8 @@ export async function createPlan(req: Request, res: Response, next: NextFunction
       batchId,
       productId,
       planDate,
+      startDate,
+      endDate,
       shift,
       processStepId,
       processStepName,
@@ -302,14 +322,28 @@ export async function createPlan(req: Request, res: Response, next: NextFunction
       return
     }
 
-    if (!planDate) {
-      res.status(400).json({ success: false, message: 'Planning Date is required.' })
+    const effectiveStartDate = startDate || planDate
+    const effectiveEndDate = endDate || effectiveStartDate
+
+    if (!effectiveStartDate) {
+      res.status(400).json({ success: false, message: 'Start date is required.' })
       return
     }
 
-    const parsedDate = new Date(planDate)
-    if (Number.isNaN(parsedDate.getTime())) {
-      res.status(400).json({ success: false, message: 'Invalid planning date.' })
+    const parsedStartDate = new Date(effectiveStartDate)
+    if (Number.isNaN(parsedStartDate.getTime())) {
+      res.status(400).json({ success: false, message: 'Invalid start date.' })
+      return
+    }
+
+    const parsedEndDate = new Date(effectiveEndDate)
+    if (Number.isNaN(parsedEndDate.getTime())) {
+      res.status(400).json({ success: false, message: 'Invalid end date.' })
+      return
+    }
+
+    if (parsedEndDate < parsedStartDate) {
+      res.status(400).json({ success: false, message: 'End date cannot be earlier than start date.' })
       return
     }
 
@@ -372,7 +406,7 @@ export async function createPlan(req: Request, res: Response, next: NextFunction
       return
     }
 
-    const planNo = await generatePlanNo(parsedDate)
+    const planNo = await generatePlanNo(parsedStartDate)
 
     const initialStatus: PlanStatus =
       status && PLAN_STATUSES.includes(status.toUpperCase()) ? status.toUpperCase() : 'PLANNED'
@@ -386,7 +420,9 @@ export async function createPlan(req: Request, res: Response, next: NextFunction
       productId: product._id,
       productCode: product.productCode,
       productName: product.name,
-      planDate: parsedDate,
+      planDate: parsedStartDate,
+      startDate: parsedStartDate,
+      endDate: parsedEndDate,
       shift: String(shift).trim(),
       processStepId: looksLikeObjectId(processStepId) ? processStepId : undefined,
       processStepName: String(processStepName).trim(),
@@ -430,6 +466,8 @@ export async function updatePlan(req: Request<{ id: string }>, res: Response, ne
       batchId,
       productId,
       planDate,
+      startDate,
+      endDate,
       shift,
       processStepId,
       processStepName,
@@ -468,10 +506,27 @@ export async function updatePlan(req: Request<{ id: string }>, res: Response, ne
       plan.productName = product.name
     }
 
-    if (planDate) {
+    if (startDate) {
+      const d = new Date(startDate)
+      if (!Number.isNaN(d.getTime())) {
+        plan.startDate = d
+        plan.planDate = d
+      }
+    }
+
+    if (endDate) {
+      const d = new Date(endDate)
+      if (!Number.isNaN(d.getTime())) {
+        plan.endDate = d
+      }
+    }
+
+    if (planDate && !startDate) {
       const d = new Date(planDate)
       if (!Number.isNaN(d.getTime())) {
         plan.planDate = d
+        if (!plan.startDate) plan.startDate = d
+        if (!plan.endDate) plan.endDate = d
       }
     }
 
