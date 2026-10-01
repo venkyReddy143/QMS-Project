@@ -19,6 +19,8 @@ export interface IProductionPlan {
   productCode: string
   productName: string
   planDate: Date
+  startDate?: Date
+  endDate?: Date
   shift: string
   processStepId?: Types.ObjectId
   processStepName: string
@@ -92,6 +94,14 @@ const productionPlanSchema = new Schema<IProductionPlan>(
     planDate: {
       type: Date,
       required: true,
+      index: true,
+    },
+    startDate: {
+      type: Date,
+      index: true,
+    },
+    endDate: {
+      type: Date,
       index: true,
     },
     shift: {

@@ -65,7 +65,8 @@ function statusBadgeClass(status: PlanStatus): string {
 interface FormState {
   batchId: string
   productId: string
-  planDate: string
+  startDate: string
+  endDate: string
   shift: string
   processStepName: string
   processStepInfo: string
@@ -80,7 +81,8 @@ interface FormState {
 const initialFormState: FormState = {
   batchId: '',
   productId: '',
-  planDate: todayIso(),
+  startDate: todayIso(),
+  endDate: todayIso(),
   shift: 'Shift A',
   processStepName: '',
   processStepInfo: '',
@@ -318,7 +320,8 @@ export function PlanningModule() {
     setEditingPlan(null)
     setForm({
       ...initialFormState,
-      planDate: todayIso(),
+      startDate: todayIso(),
+      endDate: todayIso(),
       shift: shiftOptions[0]?.value || 'Shift A',
     })
     setFormErrors({})
@@ -327,10 +330,18 @@ export function PlanningModule() {
 
   function openEditModal(plan: ProductionPlan) {
     setEditingPlan(plan)
+    const effectiveStart = plan.startDate
+      ? plan.startDate.slice(0, 10)
+      : (plan.planDate ? plan.planDate.slice(0, 10) : todayIso())
+    const effectiveEnd = plan.endDate
+      ? plan.endDate.slice(0, 10)
+      : effectiveStart
+
     setForm({
       batchId: plan.batchId,
       productId: plan.productId,
-      planDate: plan.planDate ? plan.planDate.slice(0, 10) : todayIso(),
+      startDate: effectiveStart,
+      endDate: effectiveEnd,
       shift: plan.shift,
       processStepName: plan.processStepName,
       processStepInfo: plan.processStepInfo || '',
@@ -349,7 +360,11 @@ export function PlanningModule() {
     const errors: Partial<Record<keyof FormState, string>> = {}
     if (!form.batchId) errors.batchId = 'Please select a production batch.'
     if (!form.productId) errors.productId = 'Please select a product.'
-    if (!form.planDate) errors.planDate = 'Planning date is required.'
+    if (!form.startDate) errors.startDate = 'Start date is required.'
+    if (!form.endDate) errors.endDate = 'End date is required.'
+    if (form.startDate && form.endDate && form.endDate < form.startDate) {
+      errors.endDate = 'End date cannot be earlier than start date.'
+    }
     if (!form.shift) errors.shift = 'Shift is required.'
     if (!form.processStepName.trim()) errors.processStepName = 'Process step is required.'
     if (!form.process.trim()) errors.process = 'Process is required.'
@@ -376,7 +391,9 @@ export function PlanningModule() {
         const payload: UpdatePlanPayload = {
           batchId: form.batchId,
           productId: form.productId,
-          planDate: form.planDate,
+          planDate: form.startDate,
+          startDate: form.startDate,
+          endDate: form.endDate,
           shift: form.shift,
           processStepName: form.processStepName.trim(),
           processStepInfo: form.processStepInfo.trim(),
@@ -398,7 +415,9 @@ export function PlanningModule() {
         const payload: CreatePlanPayload = {
           batchId: form.batchId,
           productId: form.productId,
-          planDate: form.planDate,
+          planDate: form.startDate,
+          startDate: form.startDate,
+          endDate: form.endDate,
           shift: form.shift,
           processStepName: form.processStepName.trim(),
           processStepInfo: form.processStepInfo.trim(),
@@ -444,7 +463,11 @@ export function PlanningModule() {
   // Summary Metrics
   const stats = useMemo(() => {
     const today = todayIso()
-    const todayPlans = plans.filter((p) => p.planDate && p.planDate.slice(0, 10) === today)
+    const todayPlans = plans.filter((p) => {
+      const start = p.startDate ? p.startDate.slice(0, 10) : (p.planDate ? p.planDate.slice(0, 10) : '')
+      const end = p.endDate ? p.endDate.slice(0, 10) : start
+      return (start && end && start <= today && today <= end) || (p.planDate && p.planDate.slice(0, 10) === today)
+    })
     const totalQty = plans.reduce((acc, p) => acc + (p.plannedQuantity || 0), 0)
     const inProgress = plans.filter((p) => p.status === 'IN_PROGRESS').length
     const uniqueMachines = new Set(plans.map((p) => p.machineId)).size
@@ -720,8 +743,14 @@ export function PlanningModule() {
                     <td className="px-4 py-3.5">
                       <div className="font-mono text-sm font-bold text-accent">{plan.planNo}</div>
                       <div className="flex items-center gap-1 text-xs text-muted">
-                        <Calendar className="h-3 w-3" />
-                        {formatDate(plan.planDate)}
+                        <Calendar className="h-3 w-3 shrink-0" />
+                        {plan.startDate && plan.endDate && plan.startDate !== plan.endDate ? (
+                          <span className="whitespace-nowrap">
+                            {formatDate(plan.startDate)} <span className="text-[10px] text-muted/70">to</span> {formatDate(plan.endDate)}
+                          </span>
+                        ) : (
+                          <span className="whitespace-nowrap">{formatDate(plan.startDate || plan.planDate)}</span>
+                        )}
                       </div>
                     </td>
 
@@ -840,15 +869,15 @@ export function PlanningModule() {
       {/* Create / Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-border bg-surface-raised p-6 shadow-2xl">
+          <div className="relative max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-surface-raised p-6 shadow-2xl">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-border pb-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
               <div>
-                <h3 className="text-xl font-bold text-foreground">
+                <h3 className="text-lg font-bold text-foreground">
                   {editingPlan ? `Edit Production Plan — ${editingPlan.planNo}` : 'Create New Production Plan'}
                 </h3>
                 <p className="mt-0.5 text-xs text-muted">
-                  Assign Prod Batch, Product, Shift, Process Step & Info, Machine, Operator, and Planned Qty.
+                  Assign Prod Batch, Product, Start Date, End Date, Shift, Process Step & Info, Machine, Operator, and Planned Qty.
                 </p>
               </div>
               <button
@@ -861,12 +890,13 @@ export function PlanningModule() {
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+            <form onSubmit={handleSubmit} className="mt-4 space-y-3">
               {/* Row 1: Prod Batch & Product */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <SearchableSelect
                   label="Prod Batch"
                   required
+                  size="sm"
                   placeholder="Select batch..."
                   options={batchOptions}
                   value={form.batchId}
@@ -877,6 +907,7 @@ export function PlanningModule() {
                 <SearchableSelect
                   label="Product"
                   required
+                  size="sm"
                   placeholder="Select product..."
                   options={productOptions}
                   value={form.productId}
@@ -885,33 +916,49 @@ export function PlanningModule() {
                 />
               </div>
 
-              {/* Row 2: Date & Shift */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* Row 2: Start Date, End Date, Shift */}
+              <div className="grid gap-3 sm:grid-cols-3">
                 <div>
-                  <label htmlFor="planDateInput" className="mb-1.5 block text-sm font-bold text-foreground">
-                    Date <span className="text-danger">*</span>
+                  <label htmlFor="startDateInput" className="mb-1 block text-xs font-bold text-foreground">
+                    Start Date <span className="text-danger">*</span>
                   </label>
                   <input
-                    id="planDateInput"
+                    id="startDateInput"
                     type="date"
-                    value={form.planDate}
-                    onChange={(e) => setForm((prev) => ({ ...prev, planDate: e.target.value }))}
-                    className="min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    value={form.startDate}
+                    onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                    className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
-                  {formErrors.planDate && (
-                    <p className="mt-1 text-xs font-semibold text-danger">{formErrors.planDate}</p>
+                  {formErrors.startDate && (
+                    <p className="mt-1 text-xs font-semibold text-danger">{formErrors.startDate}</p>
                   )}
                 </div>
 
                 <div>
-                  <label htmlFor="shiftSelect" className="mb-1.5 block text-sm font-bold text-foreground">
+                  <label htmlFor="endDateInput" className="mb-1 block text-xs font-bold text-foreground">
+                    End Date <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    id="endDateInput"
+                    type="date"
+                    value={form.endDate}
+                    onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                    className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                  />
+                  {formErrors.endDate && (
+                    <p className="mt-1 text-xs font-semibold text-danger">{formErrors.endDate}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="shiftSelect" className="mb-1 block text-xs font-bold text-foreground">
                     Shift <span className="text-danger">*</span>
                   </label>
                   <select
                     id="shiftSelect"
                     value={form.shift}
                     onChange={(e) => setForm((prev) => ({ ...prev, shift: e.target.value }))}
-                    className="min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   >
                     {shiftOptions.map((s) => (
                       <option key={s.value} value={s.value}>
@@ -926,9 +973,9 @@ export function PlanningModule() {
               </div>
 
               {/* Row 3: Process Step (Information) & Process */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="processStepInput" className="mb-1.5 block text-sm font-bold text-foreground">
+                  <label htmlFor="processStepInput" className="mb-1 block text-xs font-bold text-foreground">
                     Process Step <span className="text-danger">*</span>
                   </label>
                   <input
@@ -938,7 +985,7 @@ export function PlanningModule() {
                     value={form.processStepName}
                     onChange={(e) => handleProcessStepChange(e.target.value)}
                     placeholder="e.g. CNC Machining, Casting..."
-                    className="min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
                   <datalist id="processStepOptionsList">
                     {availableProcessStepNames.map((name) => (
@@ -951,7 +998,7 @@ export function PlanningModule() {
                 </div>
 
                 <div>
-                  <label htmlFor="processInput" className="mb-1.5 block text-sm font-bold text-foreground">
+                  <label htmlFor="processInput" className="mb-1 block text-xs font-bold text-foreground">
                     Process <span className="text-danger">*</span>
                   </label>
                   <input
@@ -960,7 +1007,7 @@ export function PlanningModule() {
                     value={form.process}
                     onChange={(e) => setForm((prev) => ({ ...prev, process: e.target.value }))}
                     placeholder="e.g. CNC, Machining, Coating, Inspection..."
-                    className="min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
                   {formErrors.process && (
                     <p className="mt-1 text-xs font-semibold text-danger">{formErrors.process}</p>
@@ -970,7 +1017,7 @@ export function PlanningModule() {
 
               {/* Process Step Information (Notes, tolerance, drawing instructions) */}
               <div>
-                <label htmlFor="stepInfoInput" className="mb-1.5 block text-sm font-bold text-foreground">
+                <label htmlFor="stepInfoInput" className="mb-1 block text-xs font-bold text-foreground">
                   Process Step (Information)
                 </label>
                 <input
@@ -979,15 +1026,16 @@ export function PlanningModule() {
                   value={form.processStepInfo}
                   onChange={(e) => setForm((prev) => ({ ...prev, processStepInfo: e.target.value }))}
                   placeholder="Additional step details, tolerance instructions, drawing specs, or parameters..."
-                  className="min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                 />
               </div>
 
               {/* Row 4: Machine & Operator */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <SearchableSelect
                   label="Machine"
                   required
+                  size="sm"
                   placeholder="Select machine..."
                   options={machineOptions}
                   value={form.machineId}
@@ -998,6 +1046,7 @@ export function PlanningModule() {
                 <SearchableSelect
                   label="Operator"
                   required
+                  size="sm"
                   placeholder="Select operator..."
                   options={operatorOptions}
                   value={form.operatorId}
@@ -1007,9 +1056,9 @@ export function PlanningModule() {
               </div>
 
               {/* Row 5: Planned Quantity & Status */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="plannedQtyInput" className="mb-1.5 block text-sm font-bold text-foreground">
+                  <label htmlFor="plannedQtyInput" className="mb-1 block text-xs font-bold text-foreground">
                     Planned Quantity (pcs) <span className="text-danger">*</span>
                   </label>
                   <input
@@ -1020,7 +1069,7 @@ export function PlanningModule() {
                     value={form.plannedQuantity}
                     onChange={(e) => setForm((prev) => ({ ...prev, plannedQuantity: e.target.value }))}
                     placeholder="Enter planned quantity..."
-                    className="min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   />
                   {formErrors.plannedQuantity && (
                     <p className="mt-1 text-xs font-semibold text-danger">{formErrors.plannedQuantity}</p>
@@ -1028,14 +1077,14 @@ export function PlanningModule() {
                 </div>
 
                 <div>
-                  <label htmlFor="statusSelect" className="mb-1.5 block text-sm font-bold text-foreground">
+                  <label htmlFor="statusSelect" className="mb-1 block text-xs font-bold text-foreground">
                     Status
                   </label>
                   <select
                     id="statusSelect"
                     value={form.status}
                     onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value as PlanStatus }))}
-                    className="min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="h-9 min-h-[36px] w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                   >
                     <option value="PLANNED">Planned</option>
                     <option value="IN_PROGRESS">In Progress</option>
@@ -1048,7 +1097,7 @@ export function PlanningModule() {
 
               {/* Optional Notes */}
               <div>
-                <label htmlFor="notesInput" className="mb-1.5 block text-sm font-bold text-foreground">
+                <label htmlFor="notesInput" className="mb-1 block text-xs font-bold text-foreground">
                   General Remarks / Notes
                 </label>
                 <textarea
@@ -1057,26 +1106,26 @@ export function PlanningModule() {
                   value={form.notes}
                   onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
                   placeholder="Special instructions or notes for this shift plan..."
-                  className="w-full rounded-xl border border-border bg-surface-muted p-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="w-full rounded-lg border border-border bg-surface-muted p-2.5 text-xs text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                 />
               </div>
 
               {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+              <div className="flex items-center justify-end gap-2.5 border-t border-border pt-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
                   disabled={saving}
-                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-surface-muted"
+                  className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-foreground hover:bg-surface-muted"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-2.5 text-sm font-bold text-white hover:bg-accent/90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-xs font-bold text-white hover:bg-accent/90 disabled:opacity-50"
                 >
-                  {saving && <RefreshCw className="h-4 w-4 animate-spin" />}
+                  {saving && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
                   {editingPlan ? 'Update Plan' : 'Save Plan'}
                 </button>
               </div>
