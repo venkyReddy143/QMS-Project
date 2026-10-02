@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import {
   createAdminCustomerApi,
   createAdminMachineApi,
@@ -1904,12 +1905,12 @@ function MasterTable({
         <table className="min-w-full text-left text-sm">
           <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
             <tr>
+              <th className="px-4 py-3">Actions</th>
               {columns.map((column) => (
                 <th key={column} className="px-4 py-3">
                   {column}
                 </th>
               ))}
-              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1925,6 +1926,16 @@ function MasterTable({
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="border-t border-border">
+                  <td className="px-4 py-3">
+                    <RowActionsMenu
+                      label={`Actions for ${row.cells[0] ?? 'row'}`}
+                      actions={[
+                        ...(row.extra ?? []),
+                        { label: 'Edit', onClick: row.onEdit },
+                        { label: 'Delete', onClick: row.onDelete, danger: true },
+                      ]}
+                    />
+                  </td>
                   {row.cells.map((cell, index) => (
                     <td
                       key={`${row.id}-${index}`}
@@ -1933,34 +1944,6 @@ function MasterTable({
                       {cell}
                     </td>
                   ))}
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      {(row.extra ?? []).map((action) => (
-                        <button
-                          key={action.label}
-                          type="button"
-                          onClick={action.onClick}
-                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent hover:text-accent"
-                        >
-                          {action.label}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={row.onEdit}
-                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent hover:text-accent"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={row.onDelete}
-                        className="rounded-lg border border-danger/30 px-3 py-1.5 text-xs font-bold text-danger"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))
             )}

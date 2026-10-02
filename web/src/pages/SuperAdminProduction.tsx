@@ -332,7 +332,13 @@ export function SuperAdminProduction() {
                 className="block w-full px-3 py-2 text-left text-sm font-semibold hover:bg-surface-muted"
                 onClick={() => {
                   closeMenu()
-                  navigate(`/orders/${menuBatch.orderId}`)
+                  navigate(`/orders/${menuBatch.orderId}`, {
+                    state: {
+                      view: 'batches',
+                      expandBatchId: menuBatch.id,
+                      onlyBatchId: menuBatch.id,
+                    },
+                  })
                 }}
               >
                 Open

@@ -159,7 +159,12 @@ export function OrderDetail() {
   const navigate = useNavigate()
   const location = useLocation()
   const navState = location.state as
-    | { view?: 'details' | 'batches'; expandBatchId?: string; filterLineId?: string }
+    | {
+        view?: 'details' | 'batches'
+        expandBatchId?: string
+        onlyBatchId?: string
+        filterLineId?: string
+      }
     | null
   const dispatch = useAppDispatch()
   const { user } = useAuth()
@@ -724,6 +729,7 @@ export function OrderDetail() {
           order={order}
           canEdit={canEdit}
           initialExpandedBatchId={navState?.expandBatchId}
+          onlyBatchId={navState?.onlyBatchId}
           productFilterId={productFilterId}
         />
       ) : canEdit ? (

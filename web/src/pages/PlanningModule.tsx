@@ -3,18 +3,17 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  Edit2,
   Layers,
   PlusCircle,
   RefreshCw,
   Search,
-  Trash2,
   Users,
   X,
   AlertCircle,
   Cpu,
 } from 'lucide-react'
 import { SearchableSelect } from '../components/SearchableSelect'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import {
   createPlanApi,
   deletePlanApi,
@@ -691,6 +690,7 @@ export function PlanningModule() {
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-border bg-surface-muted/60 text-xs font-bold uppercase tracking-wider text-muted">
               <tr>
+                <th className="px-4 py-3.5">Actions</th>
                 <th className="px-4 py-3.5">Plan & Date</th>
                 <th className="px-4 py-3.5">Prod Batch</th>
                 <th className="px-4 py-3.5">Product</th>
@@ -701,7 +701,6 @@ export function PlanningModule() {
                 <th className="px-4 py-3.5">Operator</th>
                 <th className="px-4 py-3.5 text-right">Planned Qty</th>
                 <th className="px-4 py-3.5 text-center">Status</th>
-                <th className="px-4 py-3.5 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -739,6 +738,21 @@ export function PlanningModule() {
               ) : (
                 plans.map((plan) => (
                   <tr key={plan.id} className="transition hover:bg-surface-muted/40">
+                    {/* Actions */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <RowActionsMenu
+                        label={`Actions for ${plan.planNo}`}
+                        actions={[
+                          { label: 'Edit Plan', onClick: () => openEditModal(plan) },
+                          {
+                            label: 'Delete Plan',
+                            onClick: () => setDeletingPlan(plan),
+                            danger: true,
+                          },
+                        ]}
+                      />
+                    </td>
+
                     {/* Plan No & Date */}
                     <td className="px-4 py-3.5">
                       <div className="font-mono text-sm font-bold text-accent">{plan.planNo}</div>
@@ -837,27 +851,6 @@ export function PlanningModule() {
                       </span>
                     </td>
 
-                    {/* Actions */}
-                    <td className="px-4 py-3.5 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(plan)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:border-accent hover:bg-surface-muted hover:text-accent"
-                          title="Edit Plan"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingPlan(plan)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:border-danger hover:bg-red-50 hover:text-danger"
-                          title="Delete Plan"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))
               )}

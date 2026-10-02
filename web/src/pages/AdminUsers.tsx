@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { PlusCircle } from 'lucide-react'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import {
   createAdminUserApi,
   deleteAdminUserApi,
@@ -348,12 +349,12 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
           <table className="min-w-full text-left text-sm">
             <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
               <tr>
+                <th className="px-4 py-3">Actions</th>
                 <th className="px-4 py-3">Code</th>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -366,29 +367,24 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
               ) : (
                 users.map((user) => (
                   <tr key={user.id} className="border-t border-border">
+                    <td className="px-4 py-3">
+                      <RowActionsMenu
+                        label={`Actions for ${user.name}`}
+                        actions={[
+                          { label: 'Edit', onClick: () => startEdit(user) },
+                          {
+                            label: 'Delete',
+                            onClick: () => void handleDelete(user),
+                            danger: true,
+                          },
+                        ]}
+                      />
+                    </td>
                     <td className="px-4 py-3 font-semibold">{user.employeeCode}</td>
                     <td className="px-4 py-3">{user.name}</td>
                     <td className="px-4 py-3">{user.phone}</td>
                     <td className="px-4 py-3">{roleLabel(user.role)}</td>
                     <td className="px-4 py-3">{user.status === 'ACTIVE' ? 'Active' : 'Inactive'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(user)}
-                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent hover:text-accent"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(user)}
-                          className="rounded-lg border border-danger/30 px-3 py-1.5 text-xs font-bold text-danger"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))
               )}

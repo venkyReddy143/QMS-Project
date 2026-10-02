@@ -131,11 +131,14 @@ export function OrderBatches({
   order,
   canEdit,
   initialExpandedBatchId,
+  onlyBatchId,
   productFilterId,
 }: {
   order: ProductionOrder
   canEdit: boolean
   initialExpandedBatchId?: string
+  /** when set (e.g. via "Open" from My Production), only this batch is listed */
+  onlyBatchId?: string
   /** order line (_id) to show batches for; null/undefined shows all */
   productFilterId?: string | null
 }) {
@@ -155,6 +158,9 @@ export function OrderBatches({
     initialExpandedBatchId ?? null,
   )
   const [expandedStepKey, setExpandedStepKey] = useState<string | null>(null)
+  // serial numbers stay hidden until the user clicks "View" in the Actions column
+  const [singleBatchId, setSingleBatchId] = useState<string | null>(onlyBatchId ?? null)
+  const [serialsBatchId, setSerialsBatchId] = useState<string | null>(null)
 
   const [productId, setProductId] = useState(products[0]?.productId ?? '')
   const [processStepName, setProcessStepName] = useState('')
@@ -192,13 +198,16 @@ export function OrderBatches({
   const filterProduct = productFilterId
     ? products.find((item) => (item.id || item.productId) === productFilterId)
     : undefined
-  const visibleBatches = productFilterId
+  const lineBatches = productFilterId
     ? batches.filter((batch) =>
         batch.orderLineId
           ? batch.orderLineId === productFilterId
           : batch.productId === filterProduct?.productId,
       )
     : batches
+  const visibleBatches = singleBatchId
+    ? lineBatches.filter((batch) => batch.id === singleBatchId)
+    : lineBatches
 
   const selectedProduct = products.find((item) => item.productId === productId)
   const steps = selectedProduct?.processSteps ?? []
@@ -362,6 +371,7 @@ export function OrderBatches({
       setBatches(next)
       setQuantity('')
       setBatchNo(nextBatchNo(next))
+      setSingleBatchId(null)
       setExpandedBatchId(response.batch.id)
       setMessage(
         response.message ||
@@ -767,13 +777,13 @@ export function OrderBatches({
                 <th className="px-4 py-3">Serials</th>
                 <th className="px-4 py-3">Dispatch Date</th>
                 <th className="px-4 py-3">Priority</th>
-                {isSuperAdmin ? <th className="px-4 py-3">Actions</th> : null}
+                <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {visibleBatches.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={isSuperAdmin ? 10 : 9} className="px-4 py-8 text-center text-muted">
                     No batches yet.
                   </td>
                 </tr>
@@ -781,6 +791,7 @@ export function OrderBatches({
                 visibleBatches.map((batch) => {
                   const serials = batch.serials ?? []
                   const expanded = expandedBatchId === batch.id
+                  const serialsOpen = serialsBatchId === batch.id
                   // every batch can be expanded; its details stay hidden until then
                   const canExpand = isSuperAdmin || serials.length > 0
                   return (
@@ -853,10 +864,23 @@ export function OrderBatches({
                           {formatDate(batch.targetDispatchDate)}
                         </td>
                         <td className="px-4 py-3">{priorityLabel(batch.priority)}</td>
-                        {isSuperAdmin ? (
-                          <td className="px-4 py-3">
-                            {batch.status === 'OPEN' ? (
-                              <div className="flex flex-wrap gap-2">
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            {serials.length > 0 ? (
+                              <button
+                                type="button"
+                                aria-expanded={serialsOpen}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setSerialsBatchId(serialsOpen ? null : batch.id)
+                                }}
+                                className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
+                              >
+                                {serialsOpen ? 'Hide Serial Numbers' : 'View Serial Numbers'}
+                              </button>
+                            ) : null}
+                            {isSuperAdmin && batch.status === 'OPEN' ? (
+                              <>
                                 <button
                                   type="button"
                                   onClick={(event) => {
@@ -878,12 +902,11 @@ export function OrderBatches({
                                 >
                                   {activatingId === batch.id ? 'Activating…' : 'Activate'}
                                 </button>
-                              </div>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                        ) : null}
+                              </>
+                            ) : null}
+                            {serials.length === 0 && !(isSuperAdmin && batch.status === 'OPEN') ? '—' : null}
+                          </div>
+                        </td>
                       </tr>
                       {isSuperAdmin && expanded ? (
                         <tr className="border-t border-border bg-surface-muted/30">
@@ -983,9 +1006,9 @@ export function OrderBatches({
                           </td>
                         </tr>
                       ) : null}
-                      {expanded && serials.length > 0 ? (
+                      {serialsOpen && serials.length > 0 ? (
                         <tr className="border-t border-border bg-surface-muted/50">
-                          <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-3">
+                          <td colSpan={isSuperAdmin ? 10 : 9} className="px-4 py-3">
                             <div className="max-h-72 overflow-auto rounded-xl border border-border bg-surface-raised">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">

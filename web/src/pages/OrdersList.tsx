@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
-import { PlusCircle } from 'lucide-react'
+import { MoreVertical, PlusCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { canCreateOrders } from '../types/auth'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
@@ -90,6 +91,67 @@ export function OrdersList({
     void dispatch(fetchOrders())
   }, [dispatch])
 
+  // three-dot action menu (same pattern as My Production)
+  const [menuOrderId, setMenuOrderId] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+
+  function computeMenuPos(button: HTMLButtonElement) {
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 176
+    const menuHeight = 52
+    const left = Math.min(rect.left, Math.max(8, window.innerWidth - menuWidth - 8))
+    const openUp = rect.bottom + menuHeight + 8 > window.innerHeight
+    const top = openUp ? Math.max(8, rect.top - menuHeight - 4) : rect.bottom + 4
+    return { top, left }
+  }
+
+  function closeMenu() {
+    setMenuOrderId(null)
+    setMenuPos(null)
+  }
+
+  function toggleMenu(orderId: string) {
+    if (menuOrderId === orderId) {
+      closeMenu()
+      return
+    }
+    const button = buttonRefs.current[orderId]
+    if (!button) return
+    setMenuPos(computeMenuPos(button))
+    setMenuOrderId(orderId)
+  }
+
+  useEffect(() => {
+    if (!menuOrderId) return
+    const openId = menuOrderId
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node
+      if (menuRef.current?.contains(target)) return
+      if (buttonRefs.current[openId]?.contains(target)) return
+      setMenuOrderId(null)
+      setMenuPos(null)
+    }
+    function handleReposition() {
+      const button = buttonRefs.current[openId]
+      if (!button) {
+        setMenuOrderId(null)
+        setMenuPos(null)
+        return
+      }
+      setMenuPos(computeMenuPos(button))
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [menuOrderId])
+
   const visibleOrders = useMemo(() => {
     let next = orders
     if (scope === 'mine' && user?.id) {
@@ -135,6 +197,7 @@ export function OrdersList({
     }
   }, [visibleOrders])
 
+  const menuOrder = visibleOrders.find((order) => order.id === menuOrderId)
   const colSpan = isSuperAdmin ? 6 : 7
 
   return (
@@ -185,6 +248,7 @@ export function OrdersList({
           <table className="min-w-full text-left text-base">
             <thead className="bg-surface-muted text-sm font-bold uppercase tracking-wide text-muted">
               <tr>
+                <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Order ID</th>
                 {isSuperAdmin ? <th className="px-4 py-3">Order Date</th> : null}
                 <th className="px-4 py-3">Customer</th>
@@ -198,7 +262,6 @@ export function OrdersList({
                   </>
                 )}
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -217,6 +280,21 @@ export function OrdersList({
               ) : (
                 visibleOrders.map((order) => (
                   <tr key={order.id} className="border-t border-border">
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        ref={(node) => {
+                          buttonRefs.current[order.id] = node
+                        }}
+                        onClick={() => toggleMenu(order.id)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-muted text-foreground hover:border-accent hover:text-accent"
+                        aria-label={`Actions for ${order.orderNo}`}
+                        aria-expanded={menuOrderId === order.id}
+                        aria-haspopup="menu"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </td>
                     <td className="px-4 py-3 font-bold text-accent">{order.orderNo}</td>
                     {isSuperAdmin ? (
                       <td className="px-4 py-3">
@@ -242,24 +320,6 @@ export function OrdersList({
                         {statusLabel(order.status)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const hasProducts =
-                            (order.products?.length ?? 0) > 0 ||
-                            Boolean(order.productId)
-                          if (!hasProducts) {
-                            navigate(`/create-order?orderId=${order.id}`)
-                            return
-                          }
-                          navigate(`/orders/${order.id}`)
-                        }}
-                        className="min-h-10 rounded-xl border border-border bg-surface-muted px-4 text-sm font-bold hover:border-accent hover:text-accent"
-                      >
-                        {isSuperAdmin ? 'View Details' : 'Open'}
-                      </button>
-                    </td>
                   </tr>
                 ))
               )}
@@ -267,6 +327,37 @@ export function OrdersList({
           </table>
         </div>
       </section>
+
+      {menuOrder && menuPos
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{ top: menuPos.top, left: menuPos.left }}
+              className="fixed z-[100] min-w-[11rem] overflow-hidden rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-2 text-left text-sm font-semibold hover:bg-surface-muted"
+                onClick={() => {
+                  closeMenu()
+                  const hasProducts =
+                    (menuOrder.products?.length ?? 0) > 0 ||
+                    Boolean(menuOrder.productId)
+                  if (!hasProducts) {
+                    navigate(`/create-order?orderId=${menuOrder.id}`)
+                    return
+                  }
+                  navigate(`/orders/${menuOrder.id}`)
+                }}
+              >
+                {isSuperAdmin ? 'View Details' : 'Open'}
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {user?.role !== 'Order Creator' && !isSuperAdmin ? (
         <p className="text-sm text-muted">
