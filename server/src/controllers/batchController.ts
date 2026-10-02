@@ -10,10 +10,12 @@ import { DeliveryBatch } from '../models/DeliveryBatch'
 import { Machine } from '../models/Machine'
 import { ProductionOrder } from '../models/ProductionOrder'
 import { User } from '../models/User'
+import { ensureOrderLineIds } from '../utils/orderLines'
 import { buildBatchSerials, serialPrefix } from '../utils/serialNumber'
 
 interface BatchBody {
   orderId?: string
+  orderLineId?: string
   orderNo?: string
   productId?: string
   processStepName?: string
@@ -92,6 +94,7 @@ function serializeBatch(
   batch: {
     _id: { toString(): string }
     orderId: { toString(): string } | { _id?: { toString(): string }; orderNo?: string }
+    orderLineId?: { toString(): string }
     productId?: { toString(): string }
     productName?: string
     processStepName?: string
@@ -214,6 +217,7 @@ function serializeBatch(
     id: batch._id.toString(),
     orderId: order?._id?.toString() ?? String(batch.orderId),
     orderNo: orderNo ?? order?.orderNo ?? '',
+    orderLineId: batch.orderLineId ? String(batch.orderLineId) : '',
     productId: batch.productId ? String(batch.productId) : '',
     productName: batch.productName ?? '',
     productDescription: batch.productDescription ?? '',
@@ -492,7 +496,10 @@ export async function createBatch(
       return
     }
 
-    const order = await findOrder(orderRef)
+    let order = await findOrder(orderRef)
+    if (order && (await ensureOrderLineIds(order._id))) {
+      order = await findOrder(orderRef)
+    }
     if (!order) {
       res.status(404).json({
         success: false,
@@ -518,9 +525,12 @@ export async function createBatch(
 
     const productId = String(req.body.productId ?? '').trim()
     const processStepName = String(req.body.processStepName ?? '').trim()
-    const productLine = productId
-      ? order.products.find((line) => line.productId.toString() === productId)
-      : order.products[0]
+    const orderLineId = String(req.body.orderLineId ?? '').trim()
+    const productLine = orderLineId
+      ? order.products.find((line) => line._id?.toString() === orderLineId)
+      : productId
+        ? order.products.find((line) => line.productId.toString() === productId)
+        : order.products[0]
 
     if (order.products.length > 0 && !productLine) {
       res.status(400).json({
@@ -629,6 +639,7 @@ export async function createBatch(
     const batch = await DeliveryBatch.create({
       orderId: order._id,
       orderNo: order.orderNo,
+      orderLineId: productLine?._id,
       productId: productLine?.productId,
       productName: productLine?.productName ?? order.productNameSnapshot ?? '',
       productDescription: productLine?.description ?? '',

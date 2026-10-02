@@ -23,6 +23,8 @@ export interface IOrderProcessStep {
 }
 
 export interface IOrderProductLine {
+  /** Stable id of this order line; stored on delivery batches as orderLineId. */
+  _id?: Types.ObjectId
   productId: Types.ObjectId
   productCode: string
   productName: string
@@ -170,7 +172,7 @@ const orderProductLineSchema = new Schema<IOrderProductLine>(
       default: [],
     },
   },
-  { _id: false },
+  { _id: true },
 )
 
 const productionOrderSchema = new Schema<IProductionOrder>(

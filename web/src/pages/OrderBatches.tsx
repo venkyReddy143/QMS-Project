@@ -142,9 +142,14 @@ function machineNames(batch: ProductionBatch): string {
 export function OrderBatches({
   order,
   canEdit,
+  initialExpandedBatchId,
+  productFilterId,
 }: {
   order: ProductionOrder
   canEdit: boolean
+  initialExpandedBatchId?: string
+  /** order line (_id) to show batches for; null/undefined shows all */
+  productFilterId?: string | null
 }) {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -158,7 +163,9 @@ export function OrderBatches({
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [activatingId, setActivatingId] = useState<string | null>(null)
-  const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null)
+  const [expandedBatchId, setExpandedBatchId] = useState<string | null>(
+    initialExpandedBatchId ?? null,
+  )
   const [expandedStepKey, setExpandedStepKey] = useState<string | null>(null)
 
   const [productId, setProductId] = useState(products[0]?.productId ?? '')
@@ -179,6 +186,17 @@ export function OrderBatches({
   const [stepsSaving, setStepsSaving] = useState(false)
   const [machinePickerKey, setMachinePickerKey] = useState<string | null>(null)
   const [hoursEditKey, setHoursEditKey] = useState<string | null>(null)
+
+  const filterProduct = productFilterId
+    ? products.find((item) => (item.id || item.productId) === productFilterId)
+    : undefined
+  const visibleBatches = productFilterId
+    ? batches.filter((batch) =>
+        batch.orderLineId
+          ? batch.orderLineId === productFilterId
+          : batch.productId === filterProduct?.productId,
+      )
+    : batches
 
   const selectedProduct = products.find((item) => item.productId === productId)
   const steps = selectedProduct?.processSteps ?? []
@@ -326,6 +344,7 @@ export function OrderBatches({
     setSaving(true)
     try {
       const response = await createBatchApi(order.id, {
+        orderLineId: selectedProduct?.id || undefined,
         productId,
         processStepName: processStepName || undefined,
         batchNo: batchNo.trim(),
@@ -555,7 +574,11 @@ export function OrderBatches({
         <div className="flex justify-end">
           <button
             type="button"
-            onClick={() => navigate(`/orders/${order.id}/create-batch`)}
+            onClick={() =>
+              navigate(`/orders/${order.id}/create-batch`, {
+                state: { orderLineId: productFilterId ?? undefined },
+              })
+            }
             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-bold text-white hover:brightness-110"
           >
             <PlusCircle className="h-4 w-4" />
@@ -683,7 +706,7 @@ export function OrderBatches({
                 <th className="px-4 py-3">Batch No</th>
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">Process Step</th>
-                <th className="px-4 py-3">Qty</th>
+                <th className="px-4 py-3">Total Qty</th>
                 {isSuperAdmin ? <th className="px-4 py-3">Machines</th> : null}
                 {isSuperAdmin ? <th className="px-4 py-3">Status</th> : null}
                 <th className="px-4 py-3">Serials</th>
@@ -693,17 +716,18 @@ export function OrderBatches({
               </tr>
             </thead>
             <tbody>
-              {batches.length === 0 ? (
+              {visibleBatches.length === 0 ? (
                 <tr>
                   <td colSpan={isSuperAdmin ? 11 : 8} className="px-4 py-8 text-center text-muted">
                     No batches yet.
                   </td>
                 </tr>
               ) : (
-                batches.map((batch) => {
+                visibleBatches.map((batch) => {
                   const serials = batch.serials ?? []
                   const expanded = expandedBatchId === batch.id
-                  const canExpand = serials.length > 0
+                  // every batch can be expanded; its details stay hidden until then
+                  const canExpand = isSuperAdmin || serials.length > 0
                   return (
                     <Fragment key={batch.id}>
                       <tr
@@ -722,8 +746,8 @@ export function OrderBatches({
                               aria-expanded={expanded}
                               aria-label={
                                 expanded
-                                  ? `Hide serials for ${batch.batchNo}`
-                                  : `View serials for ${batch.batchNo}`
+                                  ? `Hide details for ${batch.batchNo}`
+                                  : `View details for ${batch.batchNo}`
                               }
                               onClick={(event) => {
                                 event.stopPropagation()
@@ -748,7 +772,9 @@ export function OrderBatches({
                         <td className="px-4 py-3">
                           {batch.processStepName || 'Whole product'}
                         </td>
-                        <td className="px-4 py-3">{batch.plannedQuantity}</td>
+                        <td className="px-4 py-3">
+                          {batch.totalBatchQty ?? batch.plannedQuantity}
+                        </td>
                         {isSuperAdmin ? (
                           <td className="px-4 py-3">{machineNames(batch)}</td>
                         ) : null}
@@ -807,7 +833,7 @@ export function OrderBatches({
                           </td>
                         ) : null}
                       </tr>
-                      {isSuperAdmin ? (
+                      {isSuperAdmin && expanded ? (
                         <tr className="border-t border-border bg-surface-muted/30">
                           <td colSpan={11} className="px-4 py-3 text-sm">
                             <p className="font-bold">
@@ -905,7 +931,7 @@ export function OrderBatches({
                           </td>
                         </tr>
                       ) : null}
-                      {expanded ? (
+                      {expanded && serials.length > 0 ? (
                         <tr className="border-t border-border bg-surface-muted/50">
                           <td colSpan={isSuperAdmin ? 11 : 8} className="px-4 py-3">
                             <div className="max-h-72 overflow-auto rounded-xl border border-border bg-surface-raised">

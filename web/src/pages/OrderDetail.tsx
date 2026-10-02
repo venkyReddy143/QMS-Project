@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, PlusCircle, Trash2, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { canPlanProduction } from '../types/auth'
@@ -157,6 +157,10 @@ function isPlanningComplete(order: ProductionOrder): boolean {
 export function OrderDetail() {
   const { orderId = '' } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const navState = location.state as
+    | { view?: 'details' | 'batches'; expandBatchId?: string; filterLineId?: string }
+    | null
   const dispatch = useAppDispatch()
   const { user } = useAuth()
   const canEdit = canPlanProduction(user?.role)
@@ -181,7 +185,13 @@ export function OrderDetail() {
   const [plans, setPlans] = useState<ProductPlan[]>([])
   const [formError, setFormError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const [view, setView] = useState<'details' | 'batches'>('details')
+  const [view, setView] = useState<'details' | 'batches'>(
+    navState?.view === 'batches' ? 'batches' : 'details',
+  )
+  // order line (_id) whose batches the Production button asked to see
+  const [productFilterId, setProductFilterId] = useState<string | null>(
+    navState?.filterLineId ?? null,
+  )
   const [expandedProcessLine, setExpandedProcessLine] = useState<string | null>(null)
   const [detailLineId, setDetailLineId] = useState<string | null>(null)
 
@@ -566,7 +576,10 @@ export function OrderDetail() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setView('batches')}
+                            onClick={() => {
+                              setProductFilterId(line.id || line.productId)
+                              setView('batches')
+                            }}
                             className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover:border-accent"
                           >
                             Production
@@ -690,7 +703,10 @@ export function OrderDetail() {
           </button>
           <button
             type="button"
-            onClick={() => setView('batches')}
+            onClick={() => {
+              setProductFilterId(null)
+              setView('batches')
+            }}
             disabled={!isSuperAdmin && !planningReady}
             className={`min-h-11 rounded-xl px-4 text-sm font-bold ${
               view === 'batches'
@@ -704,7 +720,12 @@ export function OrderDetail() {
       ) : null}
 
       {view === 'batches' ? (
-        <OrderBatches order={order} canEdit={canEdit} />
+        <OrderBatches
+          order={order}
+          canEdit={canEdit}
+          initialExpandedBatchId={navState?.expandBatchId}
+          productFilterId={productFilterId}
+        />
       ) : canEdit ? (
         <form onSubmit={handleSave} className="space-y-4">
           {productsOnOrder

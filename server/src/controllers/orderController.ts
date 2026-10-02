@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express'
+import { Types } from 'mongoose'
 import { ORDER_PRIORITIES, type OrderPriority } from '../constants/enums'
 import { Machine } from '../models/Machine'
 import {
@@ -8,6 +9,7 @@ import {
 } from '../models/ProductionOrder'
 import { ProcessStep } from '../models/ProcessStep'
 import { Product } from '../models/Product'
+import { ensureOrderLineIds } from '../utils/orderLines'
 
 interface CreateOrderBody {
   customerPoRef?: string
@@ -79,7 +81,14 @@ async function buildProductLines(
     rawMaterialSourcing?: string
     lineStatus?: string
   }>,
+  existingLines: IOrderProductLine[] = [],
 ): Promise<{ lines: IOrderProductLine[]; error?: string }> {
+  // Keep each line's _id stable across edits so batches stay linked to it.
+  const existingIdByProduct = new Map(
+    existingLines
+      .filter((line) => line._id)
+      .map((line) => [line.productId.toString(), line._id]),
+  )
   const seenProductIds = new Set<string>()
   const productLines: IOrderProductLine[] = []
   let lineNumber = 0
@@ -120,6 +129,7 @@ async function buildProductLines(
     const lineStatus =
       statusRaw === 'CLOSE' || statusRaw === 'CLOSED' ? 'CLOSED' : 'OPEN'
     productLines.push({
+      _id: existingIdByProduct.get(product._id.toString()) ?? new Types.ObjectId(),
       productId: product._id,
       productCode: product.productCode,
       productName: product.name,
@@ -166,6 +176,7 @@ function productLinesFromOrder(order: {
 }) {
   if (order.products && order.products.length > 0) {
     return order.products.map((line, index) => ({
+      id: line._id?.toString() ?? '',
       productId: line.productId.toString(),
       productCode: line.productCode,
       productName: line.productName,
@@ -462,7 +473,7 @@ export async function updateOrderDetails(
         })
         return
       }
-      const built = await buildProductLines(req.body.products)
+      const built = await buildProductLines(req.body.products, order.products)
       if (built.error) {
         res.status(400).json({ success: false, message: built.error })
         return
@@ -551,6 +562,7 @@ export async function getOrder(
   next: NextFunction,
 ) {
   try {
+    await ensureOrderLineIds(req.params.id)
     const order = await ProductionOrder.findById(req.params.id).lean()
 
     if (!order) {

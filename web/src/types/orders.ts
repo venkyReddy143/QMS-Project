@@ -60,6 +60,8 @@ export interface OrderProcessStep {
 }
 
 export interface OrderProductLine {
+  /** _id of this line inside the order; saved on batches as orderLineId */
+  id?: string
   productId: string
   productCode: string
   productName: string
@@ -242,6 +244,7 @@ export interface ProductionBatch {
   id: string
   orderId: string
   orderNo: string
+  orderLineId?: string
   productId?: string
   productName?: string
   productDescription?: string
@@ -252,6 +255,8 @@ export interface ProductionBatch {
   processMachines?: BatchProcessMachine[]
   batchNo: string
   plannedQuantity: number
+  /** planned + buffer quantity of the batch */
+  totalBatchQty?: number
   targetDispatchDate: string
   priority: string
   status: string
@@ -269,6 +274,8 @@ export interface ProductionBatch {
 }
 
 export interface CreateBatchPayload {
+  /** _id of the order product line this batch belongs to */
+  orderLineId?: string
   productId: string
   processStepName?: string
   machineIds?: string[]

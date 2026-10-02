@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { fetchAdminMachinesApi } from '../lib/api/admin'
@@ -55,6 +55,11 @@ function draftKey(): string {
 export function CreateBatch() {
   const { orderId = '' } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  // Set when opened from an order line's Production view: start on that line
+  // and return to the same filtered view afterwards.
+  const fromLineId =
+    (location.state as { orderLineId?: string } | null)?.orderLineId ?? ''
   const { user } = useAuth()
   const [order, setOrder] = useState<ProductionOrder | null>(null)
   const [batches, setBatches] = useState<ProductionBatch[]>([])
@@ -109,7 +114,10 @@ export function CreateBatch() {
         setOrder(nextOrder)
         setBatches(nextBatches)
         setMachines(machineRes.machines ?? [])
-        const firstProduct = nextOrder.products[0]
+        const firstProduct =
+          nextOrder.products.find(
+            (item) => fromLineId && (item.id || item.productId) === fromLineId,
+          ) ?? nextOrder.products[0]
         setProductId(firstProduct?.productId ?? '')
         setBatchNo(nextBatchNo(nextBatches))
         setSteps(
@@ -202,6 +210,7 @@ export function CreateBatch() {
       let batchId = createdBatchId
       if (!batchId) {
         const response = await createBatchApi(orderId, {
+          orderLineId: selectedProduct?.id || undefined,
           productId,
           deferSerials: true,
           status: 'OPEN',
@@ -237,7 +246,14 @@ export function CreateBatch() {
         }
       }
 
-      navigate(`/orders/${orderId}`, { replace: true })
+      navigate(`/orders/${orderId}`, {
+        replace: true,
+        state: {
+          view: 'batches',
+          expandBatchId: batchId,
+          filterLineId: fromLineId ? selectedProduct?.id || productId : undefined,
+        },
+      })
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : 'Failed to create batch.',
@@ -260,7 +276,11 @@ export function CreateBatch() {
         </div>
         <button
           type="button"
-          onClick={() => navigate(`/orders/${orderId}`)}
+          onClick={() =>
+            navigate(`/orders/${orderId}`, {
+              state: { view: 'batches', filterLineId: fromLineId || undefined },
+            })
+          }
           className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-sm font-bold hover:border-accent"
         >
           <ArrowLeft className="h-4 w-4" />

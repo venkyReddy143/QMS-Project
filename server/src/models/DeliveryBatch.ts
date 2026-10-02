@@ -61,6 +61,8 @@ export interface IBatchTimeLog {
 export interface IDeliveryBatch {
   orderId: Types.ObjectId
   orderNo: string
+  /** _id of the product line inside ProductionOrder.products */
+  orderLineId?: Types.ObjectId
   productId?: Types.ObjectId
   productName?: string
   productDescription?: string
@@ -98,6 +100,10 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
       type: String,
       trim: true,
       default: '',
+    },
+    orderLineId: {
+      type: Schema.Types.ObjectId,
+      index: true,
     },
     productId: {
       type: Schema.Types.ObjectId,
