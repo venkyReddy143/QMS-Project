@@ -119,26 +119,6 @@ function serialRange(batch: ProductionBatch): string {
   return `${first} → ${last}`
 }
 
-function machineNames(batch: ProductionBatch): string {
-  const processMachines = batch.processMachines ?? []
-  if (processMachines.length > 0) {
-    return processMachines
-      .map((item) => {
-        const machine =
-          item.machines && item.machines.length > 0
-            ? item.machines.map((m) => m.machineCode || m.machineName || '—').join('/')
-            : item.machineCode || item.machineName || '—'
-        return `${item.processStepName}: ${machine}`
-      })
-      .join(', ')
-  }
-  const machines = batch.assignedMachines ?? []
-  if (machines.length === 0) return '—'
-  return machines
-    .map((machine) => machine.machineCode || machine.machineName)
-    .join(', ')
-}
-
 export function OrderBatches({
   order,
   canEdit,
@@ -707,7 +687,6 @@ export function OrderBatches({
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">Process Step</th>
                 <th className="px-4 py-3">Total Qty</th>
-                {isSuperAdmin ? <th className="px-4 py-3">Machines</th> : null}
                 {isSuperAdmin ? <th className="px-4 py-3">Status</th> : null}
                 <th className="px-4 py-3">Serials</th>
                 <th className="px-4 py-3">Dispatch Date</th>
@@ -718,7 +697,7 @@ export function OrderBatches({
             <tbody>
               {visibleBatches.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 11 : 8} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-8 text-center text-muted">
                     No batches yet.
                   </td>
                 </tr>
@@ -776,9 +755,6 @@ export function OrderBatches({
                           {batch.totalBatchQty ?? batch.plannedQuantity}
                         </td>
                         {isSuperAdmin ? (
-                          <td className="px-4 py-3">{machineNames(batch)}</td>
-                        ) : null}
-                        {isSuperAdmin ? (
                           <td className="px-4 py-3">{batch.status}</td>
                         ) : null}
                         <td className="px-4 py-3">
@@ -835,7 +811,7 @@ export function OrderBatches({
                       </tr>
                       {isSuperAdmin && expanded ? (
                         <tr className="border-t border-border bg-surface-muted/30">
-                          <td colSpan={11} className="px-4 py-3 text-sm">
+                          <td colSpan={10} className="px-4 py-3 text-sm">
                             <p className="font-bold">
                               {batch.batchNo} — {batch.processQtys?.total ?? batch.plannedQuantity} qty
                               {batch.productionInCharge
@@ -933,7 +909,7 @@ export function OrderBatches({
                       ) : null}
                       {expanded && serials.length > 0 ? (
                         <tr className="border-t border-border bg-surface-muted/50">
-                          <td colSpan={isSuperAdmin ? 11 : 8} className="px-4 py-3">
+                          <td colSpan={isSuperAdmin ? 10 : 8} className="px-4 py-3">
                             <div className="max-h-72 overflow-auto rounded-xl border border-border bg-surface-raised">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
