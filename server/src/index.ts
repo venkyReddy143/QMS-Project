@@ -15,6 +15,7 @@ import { executionRoutes } from './routes/executionRoutes'
 import { masterRoutes } from './routes/masterRoutes'
 import { orderRoutes } from './routes/orderRoutes'
 import { planningRoutes } from './routes/planningRoutes'
+import { UPLOAD_ROOT } from './middleware/upload'
 
 const app = express()
 const PORT = Number(process.env.PORT) || 5000
@@ -64,6 +65,9 @@ app.get('/api/health', (_req, res) => {
 // =========================
 // API ROUTES
 // =========================
+
+// Uploaded attachments (random file names; served without auth so <img>/<a> work)
+app.use('/api/uploads', express.static(UPLOAD_ROOT))
 
 app.use('/api/auth', authRoutes)
 app.use('/api/admin', adminRoutes)

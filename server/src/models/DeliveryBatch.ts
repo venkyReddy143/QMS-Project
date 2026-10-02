@@ -28,10 +28,19 @@ export interface IBatchMachine {
   machineName: string
 }
 
+export interface IProcessStepAttachment {
+  url: string
+  name: string
+  mimeType?: string
+  size?: number
+  uploadedAt?: Date
+}
+
 export interface IBatchProcessMachine {
   processStepName: string
   sequence: number
   hoursPerPiece?: number
+  attachments?: IProcessStepAttachment[]
   machineId?: Types.ObjectId
   machineCode?: string
   machineName?: string
@@ -143,6 +152,18 @@ const deliveryBatchSchema = new Schema<IDeliveryBatch>(
           processStepName: { type: String, required: true, trim: true },
           sequence: { type: Number, required: true, min: 1 },
           hoursPerPiece: { type: Number, min: 0, default: 0 },
+          attachments: {
+            type: [
+              {
+                url: { type: String, required: true, trim: true },
+                name: { type: String, trim: true, default: '' },
+                mimeType: { type: String, trim: true, default: '' },
+                size: { type: Number, min: 0, default: 0 },
+                uploadedAt: { type: Date, default: Date.now },
+              },
+            ],
+            default: [],
+          },
           machineId: { type: Schema.Types.ObjectId, ref: 'Machine' },
           machineCode: { type: String, trim: true, default: '' },
           machineName: { type: String, trim: true, default: '' },

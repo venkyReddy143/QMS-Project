@@ -1,5 +1,6 @@
 import type {
   CreateBatchPayload,
+  ProcessStepAttachment,
   CreateBatchResponse,
   EmployeesResponse,
   ListBatchesResponse,
@@ -9,7 +10,34 @@ import type {
   UpdateBatchProcessStepsResponse,
   UpdateBatchResponse,
 } from '../../types/orders'
+import { apiClient } from './client'
 import { get, patch, post } from './http'
+
+/** Uploads files (multipart, via Multer on the server) and returns their stored metadata. */
+export async function uploadProcessStepAttachmentsApi(files: File[]) {
+  const formData = new FormData()
+  files.forEach((file) => formData.append('files', file))
+  const response = await apiClient.post<{
+    success: boolean
+    message: string
+    attachments?: ProcessStepAttachment[]
+  }>('/batches/process-step-attachments', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  })
+  return response.data
+}
+
+/** Absolute URL for a stored attachment (files are served by the API host). */
+export function attachmentHref(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url
+  const base = String(apiClient.defaults.baseURL ?? '')
+  try {
+    return new URL(url, base || window.location.origin).toString()
+  } catch {
+    return url
+  }
+}
 
 export function fetchAllBatchesApi() {
   return get<ListBatchesResponse>('/batches/listBatches')

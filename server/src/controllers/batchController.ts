@@ -12,6 +12,7 @@ import { ProductionOrder } from '../models/ProductionOrder'
 import { User } from '../models/User'
 import { ensureOrderLineIds } from '../utils/orderLines'
 import { buildBatchSerials, serialPrefix } from '../utils/serialNumber'
+import { PROCESS_STEP_URL_PREFIX } from '../middleware/upload'
 
 interface BatchBody {
   orderId?: string
@@ -144,6 +145,13 @@ function serializeBatch(
       processStepName: string
       sequence: number
       hoursPerPiece?: number
+      attachments?: Array<{
+        url: string
+        name?: string
+        mimeType?: string
+        size?: number
+        uploadedAt?: Date
+      }>
       machineId?: { toString(): string }
       machineCode?: string
       machineName?: string
@@ -194,6 +202,13 @@ function serializeBatch(
     processStepName: item.processStepName,
     sequence: item.sequence,
     hoursPerPiece: item.hoursPerPiece ?? 0,
+    attachments: (item.attachments ?? []).map((file) => ({
+      url: file.url,
+      name: file.name ?? '',
+      mimeType: file.mimeType ?? '',
+      size: file.size ?? 0,
+      uploadedAt: file.uploadedAt,
+    })),
     machineId: item.machineId ? String(item.machineId) : '',
     machineCode: item.machineCode ?? '',
     machineName: item.machineName ?? '',
@@ -1136,9 +1151,19 @@ export async function activateBatch(
             machineName = machine.name
           }
         }
+        const existingStep = (batch.processMachines ?? []).find(
+          (step) => step.processStepName.toLowerCase() === processStepName.toLowerCase(),
+        )
         nextMachines.push({
           processStepName,
           sequence,
+          hoursPerPiece: existingStep?.hoursPerPiece ?? 0,
+          attachments: (existingStep?.attachments ?? []).map((file) => ({
+            url: file.url,
+            name: file.name,
+            mimeType: file.mimeType,
+            size: file.size,
+          })),
           machineId: machineObjectId,
           machineCode,
           machineName,
@@ -1195,10 +1220,66 @@ export async function activateBatch(
   }
 }
 
+interface ProcessStepAttachmentInput {
+  url?: string
+  name?: string
+  mimeType?: string
+  size?: number
+}
+
+/** Keep only files that were uploaded through our own upload endpoint. */
+function sanitizeAttachments(raw: unknown) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const result: Array<{
+    url: string
+    name: string
+    mimeType: string
+    size: number
+  }> = []
+  for (const item of raw as ProcessStepAttachmentInput[]) {
+    const url = String(item?.url ?? '').trim()
+    if (
+      !url.startsWith(PROCESS_STEP_URL_PREFIX) ||
+      url.includes('..') ||
+      seen.has(url)
+    ) {
+      continue
+    }
+    seen.add(url)
+    result.push({
+      url,
+      name: String(item?.name ?? '').trim() || url.split('/').pop() || 'file',
+      mimeType: String(item?.mimeType ?? '').trim(),
+      size: toNumber(item?.size) ?? 0,
+    })
+  }
+  return result
+}
+
+export function uploadProcessStepAttachments(req: Request, res: Response) {
+  const files = (req.files as Express.Multer.File[] | undefined) ?? []
+  if (files.length === 0) {
+    res.status(400).json({ success: false, message: 'Select at least one file.' })
+    return
+  }
+  res.status(201).json({
+    success: true,
+    message: `${files.length} file(s) uploaded.`,
+    attachments: files.map((file) => ({
+      url: `${PROCESS_STEP_URL_PREFIX}${file.filename}`,
+      name: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+    })),
+  })
+}
+
 interface ProcessStepInput {
   processStepName?: string
   sequence?: number
   hoursPerPiece?: number
+  attachments?: ProcessStepAttachmentInput[]
   machineId?: string
   machineIds?: string[]
 }
@@ -1247,6 +1328,7 @@ export async function updateBatchProcessSteps(
       processStepName: string
       sequence: number
       hoursPerPiece: number
+      attachments: Array<{ url: string; name: string; mimeType: string; size: number }>
       machineId?: mongoose.Types.ObjectId
       machineCode: string
       machineName: string
@@ -1295,6 +1377,7 @@ export async function updateBatchProcessSteps(
         processStepName,
         sequence: toNumber(item.sequence) ?? sequence,
         hoursPerPiece: toNumber(item.hoursPerPiece) ?? 0,
+        attachments: sanitizeAttachments(item.attachments),
         machineId: machines[0]?.machineId,
         machineCode: machines[0]?.machineCode ?? '',
         machineName: machines[0]?.machineName ?? '',

@@ -192,10 +192,18 @@ export interface BatchAssignedMachine {
   machineName: string
 }
 
+export interface ProcessStepAttachment {
+  url: string
+  name: string
+  mimeType?: string
+  size?: number
+}
+
 export interface BatchProcessMachine {
   processStepName: string
   sequence: number
   hoursPerPiece?: number
+  attachments?: ProcessStepAttachment[]
   machineId?: string
   machineCode?: string
   machineName?: string
@@ -212,6 +220,7 @@ export interface UpdateBatchProcessStepsPayload {
     sequence?: number
     hoursPerPiece?: number
     machineIds?: string[]
+    attachments?: ProcessStepAttachment[]
   }>
 }
 

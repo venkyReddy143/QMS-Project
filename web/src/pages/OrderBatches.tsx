@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronUp, PlusCircle, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, Eye, Loader2, Paperclip, PlusCircle, Trash2, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { fetchAdminMachinesApi } from '../lib/api/admin'
 import {
@@ -8,11 +8,18 @@ import {
   fetchBatchesApi,
   activateBatchApi,
   updateBatchProcessStepsApi,
+  uploadProcessStepAttachmentsApi,
+  attachmentHref,
 } from '../lib/api/batches'
 import { fetchProductsApi, fetchProcessStepsApi } from '../lib/api/masters'
 import type { AdminMachine } from '../types/admin'
 import type { ProcessStepOption, ProductOption } from '../types/masters'
-import type { OrderPriorityApi, ProductionBatch, ProductionOrder } from '../types/orders'
+import type {
+  OrderPriorityApi,
+  ProcessStepAttachment,
+  ProductionBatch,
+  ProductionOrder,
+} from '../types/orders'
 
 const fieldClass =
   'min-h-12 w-full rounded-xl border border-border bg-surface-muted px-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20'
@@ -24,6 +31,7 @@ interface StepDraft {
   processStepName: string
   hoursPerPiece: string
   machineIds: string[]
+  attachments: ProcessStepAttachment[]
 }
 
 function draftKey(): string {
@@ -158,6 +166,20 @@ export function OrderBatches({
   // Add Process Steps dialog (for an OPEN batch, before activation)
   const [stepsDialogBatch, setStepsDialogBatch] = useState<ProductionBatch | null>(null)
   const [stepsDraft, setStepsDraft] = useState<StepDraft[]>([])
+  const [uploadingKeys, setUploadingKeys] = useState<string[]>([])
+  const [previewFile, setPreviewFile] = useState<ProcessStepAttachment | null>(null)
+
+  useEffect(() => {
+    if (!previewFile) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        setPreviewFile(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [previewFile])
   const [newStepId, setNewStepId] = useState('')
   const [newStepHours, setNewStepHours] = useState('0.50')
   const [customStepName, setCustomStepName] = useState('')
@@ -375,6 +397,7 @@ export function OrderBatches({
             : item.machineId
               ? [item.machineId]
               : [],
+        attachments: item.attachments ?? [],
       }))
     if (fromBatch.length > 0) {
       setStepsDraft(fromBatch)
@@ -394,6 +417,7 @@ export function OrderBatches({
             processStepName: item.name,
             hoursPerPiece: (item.hoursPerPiece ?? 0.5).toString(),
             machineIds: item.machineId ? [item.machineId] : [],
+            attachments: [],
           })),
         )
       } else {
@@ -409,6 +433,7 @@ export function OrderBatches({
             processStepName: item.name,
             hoursPerPiece: (item.hoursPerPiece ?? 0.5).toString(),
             machineIds: [],
+            attachments: [],
           })),
         )
       }
@@ -447,6 +472,7 @@ export function OrderBatches({
         processStepName: master.name,
         hoursPerPiece: newStepHours || String(master.standardHoursPerPiece),
         machineIds: [],
+        attachments: [],
       },
     ])
     setNewStepId('')
@@ -463,7 +489,13 @@ export function OrderBatches({
     setStepsError(null)
     setStepsDraft((current) => [
       ...current,
-      { key: draftKey(), processStepName: name, hoursPerPiece: customStepHours || '0.50', machineIds: [] },
+      {
+        key: draftKey(),
+        processStepName: name,
+        hoursPerPiece: customStepHours || '0.50',
+        machineIds: [],
+        attachments: [],
+      },
     ])
     setCustomStepName('')
     setCustomStepHours('0.50')
@@ -507,6 +539,49 @@ export function OrderBatches({
     )
   }
 
+  async function uploadDraftFiles(key: string, fileList: FileList | null) {
+    const files = fileList ? Array.from(fileList) : []
+    if (files.length === 0) return
+    const tooBig = files.find((file) => file.size > 10 * 1024 * 1024)
+    if (tooBig) {
+      setStepsError(`"${tooBig.name}" is larger than 10 MB.`)
+      return
+    }
+    setStepsError(null)
+    setUploadingKeys((current) => [...current, key])
+    try {
+      const response = await uploadProcessStepAttachmentsApi(files)
+      if (!response.success || !response.attachments) {
+        setStepsError(response.message || 'Failed to upload attachments.')
+        return
+      }
+      const uploaded = response.attachments
+      setStepsDraft((current) =>
+        current.map((item) =>
+          item.key === key
+            ? { ...item, attachments: [...item.attachments, ...uploaded] }
+            : item,
+        ),
+      )
+    } catch (uploadError) {
+      setStepsError(
+        uploadError instanceof Error ? uploadError.message : 'Failed to upload attachments.',
+      )
+    } finally {
+      setUploadingKeys((current) => current.filter((item) => item !== key))
+    }
+  }
+
+  function removeDraftAttachment(key: string, url: string) {
+    setStepsDraft((current) =>
+      current.map((item) =>
+        item.key === key
+          ? { ...item, attachments: item.attachments.filter((file) => file.url !== url) }
+          : item,
+      ),
+    )
+  }
+
   function updateDraftHours(key: string, hoursPerPiece: string) {
     setStepsDraft((current) =>
       current.map((item) => (item.key === key ? { ...item, hoursPerPiece } : item)),
@@ -528,6 +603,7 @@ export function OrderBatches({
           sequence: index + 1,
           hoursPerPiece: Number(item.hoursPerPiece) || 0,
           machineIds: item.machineIds.length > 0 ? item.machineIds : undefined,
+          attachments: item.attachments,
         })),
       })
       if (!response.success || !response.batch) {
@@ -964,7 +1040,7 @@ export function OrderBatches({
             role="dialog"
             aria-modal="true"
             aria-labelledby="batch-steps-title"
-            className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-border bg-surface-raised p-5 shadow-lg"
+            className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-border bg-surface-raised p-5 shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -992,6 +1068,7 @@ export function OrderBatches({
               <span className="w-7 shrink-0" />
               <span className="min-w-[9rem] flex-1">Process Steps</span>
               <span className="min-w-[11rem] flex-1">Allocate Machines</span>
+              <span className="min-w-[11rem] flex-1">Attachments</span>
               <span className="w-10 shrink-0" />
             </div>
 
@@ -1130,6 +1207,76 @@ export function OrderBatches({
                         ) : null}
                       </div>
                       </div>
+                      <div className="flex min-w-[11rem] flex-1 flex-wrap items-center gap-2">
+                        {item.attachments.map((file) => {
+                          const href = attachmentHref(file.url)
+                          const isImage = (file.mimeType ?? '').startsWith('image/')
+                          return (
+                            <span
+                              key={file.url}
+                              className="inline-flex max-w-[12rem] items-center gap-1.5 rounded-lg border border-border bg-surface-raised py-0.5 pl-1 pr-1.5 text-xs font-semibold text-foreground"
+                            >
+                              {isImage ? (
+                                <img
+                                  src={href}
+                                  alt={file.name}
+                                  className="h-7 w-7 shrink-0 rounded object-cover"
+                                />
+                              ) : (
+                                <Paperclip className="ml-1 h-3.5 w-3.5 shrink-0 text-muted" />
+                              )}
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={file.name}
+                                className="truncate hover:text-accent hover:underline"
+                              >
+                                {file.name}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewFile(file)}
+                                className="text-muted hover:text-accent"
+                                aria-label={`View ${file.name}`}
+                                title="View"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeDraftAttachment(item.key, file.url)}
+                                className="text-muted hover:text-danger"
+                                aria-label={`Remove ${file.name}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          )
+                        })}
+                        <label
+                          className={`inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-3 text-sm font-semibold text-foreground hover:border-accent hover:text-accent ${
+                            uploadingKeys.includes(item.key) ? 'pointer-events-none opacity-60' : ''
+                          }`}
+                        >
+                          {uploadingKeys.includes(item.key) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Paperclip className="h-4 w-4" />
+                          )}
+                          {uploadingKeys.includes(item.key) ? 'Uploading…' : 'Add'}
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.dwg,.dxf"
+                            className="sr-only"
+                            onChange={(event) => {
+                              void uploadDraftFiles(item.key, event.target.files)
+                              event.target.value = ''
+                            }}
+                          />
+                        </label>
+                      </div>
                       <div className="flex shrink-0 flex-col gap-0.5">
                         <button
                           type="button"
@@ -1263,6 +1410,64 @@ export function OrderBatches({
               >
                 {stepsSaving ? 'Saving…' : 'Save Process Steps'}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {previewFile ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview of ${previewFile.name}`}
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <p className="truncate text-sm font-bold text-foreground" title={previewFile.name}>
+                {previewFile.name}
+              </p>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={attachmentHref(previewFile.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-accent hover:bg-accent-soft"
+                >
+                  Open in new tab
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewFile(null)}
+                  className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-border text-muted hover:text-foreground"
+                  aria-label="Close preview"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex min-h-[12rem] flex-1 items-center justify-center overflow-auto bg-surface-muted p-3">
+              {(previewFile.mimeType ?? '').startsWith('image/') ? (
+                <img
+                  src={attachmentHref(previewFile.url)}
+                  alt={previewFile.name}
+                  className="max-h-[78vh] max-w-full rounded-lg object-contain"
+                />
+              ) : previewFile.mimeType === 'application/pdf' ? (
+                <iframe
+                  src={attachmentHref(previewFile.url)}
+                  title={previewFile.name}
+                  className="h-[78vh] w-full rounded-lg bg-white"
+                />
+              ) : (
+                <p className="text-sm text-muted">
+                  Preview isn't available for this file type. Use "Open in new tab" to download it.
+                </p>
+              )}
             </div>
           </div>
         </div>
