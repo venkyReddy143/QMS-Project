@@ -36,6 +36,14 @@ const fieldClass =
 
 const labelClass = 'block text-sm font-bold text-foreground'
 
+const fieldErrorClass =
+  'border-danger focus:border-danger focus:ring-danger/20'
+
+type DraftErrors = {
+  productId?: string
+  quantity?: string
+}
+
 function SectionCard({
   title,
   children,
@@ -125,7 +133,7 @@ export function CreateOrder() {
   const [lines, setLines] = useState<ProductLine[]>([])
   const [productDialogOpen, setProductDialogOpen] = useState(false)
   const [draft, setDraft] = useState<ProductLine>(emptyLine())
-  const [draftError, setDraftError] = useState<string | null>(null)
+  const [draftErrors, setDraftErrors] = useState<DraftErrors>({})
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [targetDate, setTargetDate] = useState(todayIsoDate())
   const [priority, setPriority] = useState<Priority>('Normal')
@@ -268,42 +276,41 @@ export function CreateOrder() {
 
   function openProductDialog() {
     setDraft(emptyLine())
-    setDraftError(null)
+    setDraftErrors({})
     setEditingKey(null)
     setProductDialogOpen(true)
   }
 
   function openEditDialog(line: ProductLine) {
     setDraft({ ...line })
-    setDraftError(null)
+    setDraftErrors({})
     setEditingKey(line.key)
     setProductDialogOpen(true)
   }
 
   function closeProductDialog() {
     setProductDialogOpen(false)
-    setDraftError(null)
+    setDraftErrors({})
     setEditingKey(null)
   }
 
   function saveDraftProduct() {
     const qty = Number(draft.quantity)
+    const errors: DraftErrors = {}
     if (!draft.productId) {
-      setDraftError('Select a product.')
-      return
-    }
-    if (!draft.quantity.trim() || !Number.isInteger(qty) || qty < 1) {
-      setDraftError('Quantity must be a whole number of at least 1.')
-      return
-    }
-    if (
+      errors.productId = 'Select a product.'
+    } else if (
       lines.some(
         (line) => line.productId === draft.productId && line.key !== editingKey,
       )
     ) {
-      setDraftError('This product is already on the order.')
-      return
+      errors.productId = 'This product is already on the order.'
     }
+    if (!draft.quantity.trim() || !Number.isInteger(qty) || qty < 1) {
+      errors.quantity = 'Enter a whole number of at least 1.'
+    }
+    setDraftErrors(errors)
+    if (Object.keys(errors).length > 0) return
 
     if (editingKey) {
       setLines((current) =>
@@ -314,7 +321,7 @@ export function CreateOrder() {
     }
     setFieldErrors((current) => ({ ...current, products: undefined }))
     setProductDialogOpen(false)
-    setDraftError(null)
+    setDraftErrors({})
     setEditingKey(null)
   }
 
@@ -333,7 +340,7 @@ export function CreateOrder() {
     setLines([])
     setProductDialogOpen(false)
     setDraft(emptyLine())
-    setDraftError(null)
+    setDraftErrors({})
     setEditingKey(null)
     setTargetDate(todayIsoDate())
     setPriority('Normal')
@@ -929,15 +936,22 @@ export function CreateOrder() {
                       <select
                         value={draft.productId}
                         onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            productId: event.target.value,
-                          }))
+                          {
+                            setDraft((current) => ({
+                              ...current,
+                              productId: event.target.value,
+                            }))
+                            setDraftErrors((current) => ({
+                              ...current,
+                              productId: undefined,
+                            }))
+                          }
                         }
+                        aria-invalid={Boolean(draftErrors.productId)}
                         disabled={
                           productsStatus === 'loading' || products.length === 0
                         }
-                        className={fieldClass}
+                        className={`${fieldClass} ${draftErrors.productId ? fieldErrorClass : ''}`}
                       >
                         {productsStatus === 'loading' ? (
                           <option value="">Loading products…</option>
@@ -964,6 +978,11 @@ export function CreateOrder() {
                           </>
                         )}
                       </select>
+                      {draftErrors.productId ? (
+                        <p className="text-sm font-medium text-danger" role="alert">
+                          {draftErrors.productId}
+                        </p>
+                      ) : null}
                     </label>
 
                     <label className="block space-y-1.5">
@@ -972,14 +991,24 @@ export function CreateOrder() {
                         type="number"
                         min={1}
                         value={draft.quantity}
-                        onChange={(event) =>
+                        onChange={(event) => {
                           setDraft((current) => ({
                             ...current,
                             quantity: event.target.value,
                           }))
-                        }
-                        className={fieldClass}
+                          setDraftErrors((current) => ({
+                            ...current,
+                            quantity: undefined,
+                          }))
+                        }}
+                        aria-invalid={Boolean(draftErrors.quantity)}
+                        className={`${fieldClass} ${draftErrors.quantity ? fieldErrorClass : ''}`}
                       />
+                      {draftErrors.quantity ? (
+                        <p className="text-sm font-medium text-danger" role="alert">
+                          {draftErrors.quantity}
+                        </p>
+                      ) : null}
                     </label>
 
                     <label className="block space-y-1.5 sm:col-span-2">
@@ -1062,12 +1091,6 @@ export function CreateOrder() {
                       />
                     </label>
                   </div>
-
-                  {draftError ? (
-                    <p className="mt-3 text-sm font-medium text-danger">
-                      {draftError}
-                    </p>
-                  ) : null}
 
                   <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                     <button

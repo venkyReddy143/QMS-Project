@@ -325,7 +325,7 @@ function processWiseQtys(batch: {
   const noNamedSteps = namedSteps.length === 0
 
   return {
-    total: batch.plannedQuantity,
+    total: serials.length > 0 ? serials.length : batch.plannedQuantity,
     notStarted,
     qcRejected: serials.filter((serial) => serial.status === 'QC_REJECTED').length,
     fullReady: serials.filter(
@@ -586,7 +586,7 @@ export async function createBatch(
       : buildBatchSerials({
           orderNo: order.orderNo,
           batchNo,
-          quantity: plannedQuantity,
+          quantity: Math.max(totalBatchQty, plannedQuantity),
           startSequence: await nextSerialSequence(order._id, order.orderNo, batchNo),
           currentProcessStepName: firstProcessName,
         })
@@ -1164,7 +1164,11 @@ export async function activateBatch(
       batch.serials = buildBatchSerials({
         orderNo: batch.orderNo,
         batchNo: batch.batchNo,
-        quantity: batch.plannedQuantity,
+        quantity: Math.max(
+          Number(batch.totalBatchQty) || 0,
+          batch.plannedQuantity + (Number(batch.bufferQty) || 0),
+          batch.plannedQuantity,
+        ),
         startSequence: await nextSerialSequence(batch.orderId, batch.orderNo, batch.batchNo),
         currentProcessStepName: firstStep,
       })
