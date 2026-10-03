@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, ChevronUp, Eye, Loader2, Paperclip, PlusCircle, Trash2, X } from 'lucide-react'
+import { useToast } from '../components/Toast'
+import { useConfirm } from '../components/ConfirmDialog'
 import { useAuth } from '../context/AuthContext'
 import { fetchAdminMachinesApi } from '../lib/api/admin'
 import {
@@ -143,6 +145,7 @@ export function OrderBatches({
   productFilterId?: string | null
 }) {
   const { user } = useAuth()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const isSuperAdmin = user?.role === 'Super Admin'
   const products = order.products ?? []
@@ -151,7 +154,7 @@ export function OrderBatches({
   const [productMasters, setProductMasters] = useState<ProductOption[]>([])
   const [processStepMasters, setProcessStepMasters] = useState<ProcessStepOption[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const toast = useToast()
   const [saving, setSaving] = useState(false)
   const [activatingId, setActivatingId] = useState<string | null>(null)
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(
@@ -299,7 +302,6 @@ export function OrderBatches({
 
   async function handleActivate(batchId: string) {
     setError(null)
-    setMessage(null)
     setActivatingId(batchId)
     try {
       const response = await activateBatchApi(order.id, batchId)
@@ -311,7 +313,7 @@ export function OrderBatches({
         current.map((item) => (item.id === batchId ? response.batch! : item)),
       )
       setExpandedBatchId(batchId)
-      setMessage(response.message)
+      toast.success(response.message)
     } catch (activateError) {
       setError(
         activateError instanceof Error
@@ -326,7 +328,6 @@ export function OrderBatches({
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
     setError(null)
-    setMessage(null)
     const qty = Number(quantity)
     if (!productId) {
       setError('Select a product.')
@@ -373,7 +374,7 @@ export function OrderBatches({
       setBatchNo(nextBatchNo(next))
       setSingleBatchId(null)
       setExpandedBatchId(response.batch.id)
-      setMessage(
+      toast.success(
         response.message ||
           `Batch ${response.batch.batchNo} created with ${response.batch.serials?.length ?? qty} serial numbers.`,
       )
@@ -511,7 +512,20 @@ export function OrderBatches({
     setCustomStepHours('0.50')
   }
 
-  function removeDraftStep(key: string) {
+  async function removeDraftStep(key: string) {
+    const stepName =
+      stepsDraft.find((item) => item.key === key)?.processStepName || 'this step'
+    const confirmed = await confirm({
+      title: 'Remove process step',
+      message: (
+        <>
+          Are you sure you want to remove{' '}
+          <span className="font-bold text-foreground">{stepName}</span> from this batch?
+        </>
+      ),
+      confirmLabel: 'Remove',
+    })
+    if (!confirmed) return
     setStepsDraft((current) => current.filter((item) => item.key !== key))
   }
 
@@ -582,7 +596,22 @@ export function OrderBatches({
     }
   }
 
-  function removeDraftAttachment(key: string, url: string) {
+  async function removeDraftAttachment(key: string, url: string) {
+    const fileName =
+      stepsDraft
+        .find((item) => item.key === key)
+        ?.attachments.find((file) => file.url === url)?.name ?? 'this attachment'
+    const confirmed = await confirm({
+      title: 'Remove attachment',
+      message: (
+        <>
+          Are you sure you want to remove{' '}
+          <span className="font-bold text-foreground">{fileName}</span>?
+        </>
+      ),
+      confirmLabel: 'Remove',
+    })
+    if (!confirmed) return
     setStepsDraft((current) =>
       current.map((item) =>
         item.key === key
@@ -623,7 +652,7 @@ export function OrderBatches({
       setBatches((current) =>
         current.map((item) => (item.id === stepsDialogBatch.id ? response.batch! : item)),
       )
-      setMessage(response.message || 'Process steps saved.')
+      toast.success(response.message || 'Process steps saved.')
       closeStepsDialog()
     } catch (saveError) {
       setStepsError(
@@ -750,11 +779,6 @@ export function OrderBatches({
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-red-50 px-4 py-3 text-sm font-medium text-danger">
           {error}
-        </div>
-      ) : null}
-      {message ? (
-        <div className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-          {message}
         </div>
       ) : null}
 
@@ -1268,7 +1292,7 @@ export function OrderBatches({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => removeDraftAttachment(item.key, file.url)}
+                                onClick={() => void removeDraftAttachment(item.key, file.url)}
                                 className="text-muted hover:text-danger"
                                 aria-label={`Remove ${file.name}`}
                               >
@@ -1322,7 +1346,7 @@ export function OrderBatches({
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeDraftStep(item.key)}
+                        onClick={() => void removeDraftStep(item.key)}
                         className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised text-muted hover:border-danger hover:text-danger"
                         aria-label={`Remove ${item.processStepName || 'step'}`}
                       >

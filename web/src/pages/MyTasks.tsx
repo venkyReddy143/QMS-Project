@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { getEmployeeName, useOrders } from '../context/OrdersContext'
 
@@ -13,7 +14,7 @@ export function MyTasks() {
   } = useOrders()
 
   const pending = getPendingDisputes()
-  const [message, setMessage] = useState<string | null>(null)
+  const toast = useToast()
   const [finalPercents, setFinalPercents] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
 
@@ -24,7 +25,7 @@ export function MyTasks() {
       user?.name ?? 'Floor Manager',
       notes[disputeId] ?? '',
     )
-    setMessage(result.message)
+    toast.success(result.message)
   }
 
   const resolved = disputes.filter((item) => item.status === 'Resolved').slice(0, 5)
@@ -39,11 +40,6 @@ export function MyTasks() {
         </p>
       </section>
 
-      {message ? (
-        <div className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-          {message}
-        </div>
-      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface-raised p-4">

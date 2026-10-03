@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import { useToast } from '../components/Toast'
 import {
   createStockEntryApi,
   fetchAdminProductsApi,
@@ -180,7 +181,7 @@ function StockEntryForm({ entryType }: { entryType: 'ISSUE' | 'RECEIPT' }) {
   const [toPersonId, setToPersonId] = useState('')
   const [remarks, setRemarks] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const toast = useToast()
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -219,7 +220,6 @@ function StockEntryForm({ entryType }: { entryType: 'ISSUE' | 'RECEIPT' }) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
-    setMessage(null)
     if (!productId) {
       setError('Select a product.')
       return
@@ -260,7 +260,7 @@ function StockEntryForm({ entryType }: { entryType: 'ISSUE' | 'RECEIPT' }) {
         setError(response.message || 'Failed to save.')
         return
       }
-      setMessage(response.message)
+      toast.success(response.message)
       setSerialNumber('')
       setQuantity('')
       setRemarks('')
@@ -278,11 +278,6 @@ function StockEntryForm({ entryType }: { entryType: 'ISSUE' | 'RECEIPT' }) {
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-red-50 px-4 py-3 text-sm font-medium text-danger">
           {error}
-        </div>
-      ) : null}
-      {message ? (
-        <div className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-          {message}
         </div>
       ) : null}
       <section className="rounded-2xl border border-border bg-surface-raised p-5">

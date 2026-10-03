@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react'
+import { useToast } from '../components/Toast'
+import { useConfirm } from '../components/ConfirmDialog'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import {
   createAdminCustomerApi,
@@ -100,7 +102,7 @@ export function AdminMasters({ section }: { section?: Tab } = {}) {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>(section ?? 'machines')
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const toast = useToast()
   const [showForm, setShowForm] = useState(false)
   const [createTick, setCreateTick] = useState(0)
 
@@ -109,12 +111,11 @@ export function AdminMasters({ section }: { section?: Tab } = {}) {
     setTab(section)
     setShowForm(false)
     setError(null)
-    setMessage(null)
   }, [section])
 
   function flash(nextError: string | null, nextMessage: string | null) {
     setError(nextError)
-    setMessage(nextMessage)
+    toast.success(nextMessage)
   }
 
   const action = TAB_ACTIONS[tab]
@@ -219,11 +220,6 @@ export function AdminMasters({ section }: { section?: Tab } = {}) {
           {error}
         </div>
       ) : null}
-      {message ? (
-        <div className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-          {message}
-        </div>
-      ) : null}
 
       {tab === 'machines' ? (
         <MachinesTab
@@ -300,6 +296,7 @@ function MachinesTab({
   const [form, setForm] = useState(empty)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const confirm = useConfirm()
 
   async function load() {
     const [machinesResponse, typesResponse] = await Promise.all([
@@ -506,8 +503,18 @@ function MachinesTab({
               active: item.active,
             })
           },
-          onDelete: () => {
-            if (!window.confirm(`Delete ${item.machineCode}?`)) return
+          onDelete: async () => {
+            const confirmed = await confirm({
+              title: 'Delete machine',
+              message: (
+                <>
+                  Are you sure you want to delete{' '}
+                  <span className="font-bold text-foreground">{item.machineCode}</span>? This
+                  action cannot be undone.
+                </>
+              ),
+            })
+            if (!confirmed) return
             void deleteAdminMachineApi(item.id)
               .then(async (response) => {
                 if (!response.success) {
@@ -558,6 +565,7 @@ function ProductsTab({
   const [form, setForm] = useState(empty)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const confirm = useConfirm()
 
   async function load() {
     const response = await fetchAdminProductsApi()
@@ -740,8 +748,18 @@ function ProductsTab({
               status: item.status,
             })
           },
-          onDelete: () => {
-            if (!window.confirm(`Delete ${item.productCode}?`)) return
+          onDelete: async () => {
+            const confirmed = await confirm({
+              title: 'Delete product',
+              message: (
+                <>
+                  Are you sure you want to delete{' '}
+                  <span className="font-bold text-foreground">{item.productCode}</span>? This
+                  action cannot be undone.
+                </>
+              ),
+            })
+            if (!confirmed) return
             void deleteAdminProductApi(item.id)
               .then(async (response) => {
                 if (!response.success) {
@@ -790,6 +808,7 @@ function ProcessStepsTab({
   const [form, setForm] = useState(empty)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const confirm = useConfirm()
 
   async function load() {
     const response = await fetchAdminProcessStepsApi()
@@ -952,8 +971,18 @@ function ProcessStepsTab({
               status: item.status,
             })
           },
-          onDelete: () => {
-            if (!window.confirm(`Delete ${item.code}?`)) return
+          onDelete: async () => {
+            const confirmed = await confirm({
+              title: 'Delete process step',
+              message: (
+                <>
+                  Are you sure you want to delete{' '}
+                  <span className="font-bold text-foreground">{item.code}</span>? This
+                  action cannot be undone.
+                </>
+              ),
+            })
+            if (!confirmed) return
             void deleteAdminProcessStepApi(item.id)
               .then(async (response) => {
                 if (!response.success) {
@@ -995,6 +1024,7 @@ function CustomersTab({
   const [form, setForm] = useState(empty)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const confirm = useConfirm()
 
   async function load() {
     const response = await fetchAdminCustomersApi()
@@ -1102,8 +1132,18 @@ function CustomersTab({
             onShowForm(true)
             setForm({ name: item.name, status: item.status })
           },
-          onDelete: () => {
-            if (!window.confirm(`Delete ${item.name}?`)) return
+          onDelete: async () => {
+            const confirmed = await confirm({
+              title: 'Delete customer',
+              message: (
+                <>
+                  Are you sure you want to delete{' '}
+                  <span className="font-bold text-foreground">{item.name}</span>? This
+                  action cannot be undone.
+                </>
+              ),
+            })
+            if (!confirmed) return
             void deleteAdminCustomerApi(item.id)
               .then(async (response) => {
                 if (!response.success) {
@@ -1157,6 +1197,7 @@ function MachineTypesTab({
   const [form, setForm] = useState(empty)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const confirm = useConfirm()
 
   async function load() {
     const [typesResponse, machinesResponse] = await Promise.all([
@@ -1283,8 +1324,18 @@ function MachineTypesTab({
               onShowForm(true)
               setForm({ name: item.name, status: item.status })
             },
-            onDelete: () => {
-              if (!window.confirm(`Delete ${item.name}?`)) return
+            onDelete: async () => {
+              const confirmed = await confirm({
+                title: 'Delete machine type',
+                message: (
+                  <>
+                    Are you sure you want to delete{' '}
+                    <span className="font-bold text-foreground">{item.name}</span>? This
+                    action cannot be undone.
+                  </>
+                ),
+              })
+              if (!confirmed) return
               void deleteAdminMachineTypeApi(item.id)
                 .then(async (response) => {
                   if (!response.success) {

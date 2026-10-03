@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, PlusCircle, Trash2, X } from 'lucide-react'
+import { useToast } from '../components/Toast'
+import { useConfirm } from '../components/ConfirmDialog'
 import { useAuth } from '../context/AuthContext'
 import { canPlanProduction } from '../types/auth'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
@@ -155,6 +157,8 @@ function isPlanningComplete(order: ProductionOrder): boolean {
 }
 
 export function OrderDetail() {
+  const confirm = useConfirm()
+  const toast = useToast()
   const { orderId = '' } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -189,7 +193,6 @@ export function OrderDetail() {
   const [inChargeName, setInChargeName] = useState('')
   const [plans, setPlans] = useState<ProductPlan[]>([])
   const [formError, setFormError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
   const [view, setView] = useState<'details' | 'batches'>(
     navState?.view === 'batches' ? 'batches' : 'details',
   )
@@ -263,7 +266,6 @@ export function OrderDetail() {
         plan.productId === productId ? { ...plan, ...patch } : plan,
       ),
     )
-    setSaved(false)
   }
 
   function addStep(productId: string) {
@@ -355,9 +357,22 @@ export function OrderDetail() {
     })
   }
 
-  function removeStep(productId: string, stepIdValue: string) {
+  async function removeStep(productId: string, stepIdValue: string) {
     const plan = plans.find((item) => item.productId === productId)
     if (!plan) return
+    const stepName = plan.steps.find((step) => step.id === stepIdValue)?.name || 'this step'
+    const confirmed = await confirm({
+      title: 'Remove process step',
+      message: (
+        <>
+          Are you sure you want to remove{' '}
+          <span className="font-bold text-foreground">{stepName}</span> from the process
+          plan?
+        </>
+      ),
+      confirmLabel: 'Remove',
+    })
+    if (!confirmed) return
     updatePlan(productId, {
       steps: plan.steps.filter((step) => step.id !== stepIdValue),
     })
@@ -366,7 +381,6 @@ export function OrderDetail() {
   async function handleSave(event: FormEvent) {
     event.preventDefault()
     if (!order) return
-    setSaved(false)
 
     const line = (order.products ?? []).find(
       (item) => item.productId === expandedProcessLine,
@@ -426,7 +440,7 @@ export function OrderDetail() {
     )
 
     if (updateOrderPlanning.fulfilled.match(result)) {
-      setSaved(true)
+      toast.success('Process steps saved for this line.')
       setExpandedProcessLine(null)
     }
   }
@@ -822,7 +836,7 @@ export function OrderDetail() {
                           </select>
                           <button
                             type="button"
-                            onClick={() => removeStep(line.productId, step.id)}
+                            onClick={() => void removeStep(line.productId, step.id)}
                             className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-border bg-surface-raised text-muted hover:border-danger hover:text-danger"
                             aria-label={`Remove ${step.name}`}
                           >
@@ -936,11 +950,6 @@ export function OrderDetail() {
           {expandedProcessLine && (formError || planningError) ? (
             <div className="rounded-xl border border-danger/30 bg-red-50 px-4 py-3 text-sm font-medium text-danger">
               {formError || planningError}
-            </div>
-          ) : null}
-          {expandedProcessLine && saved ? (
-            <div className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-              Process steps saved for this line.
             </div>
           ) : null}
 

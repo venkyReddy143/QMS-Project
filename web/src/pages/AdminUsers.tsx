@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { PlusCircle } from 'lucide-react'
+import { useToast } from '../components/Toast'
+import { useConfirm } from '../components/ConfirmDialog'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import {
   createAdminUserApi,
@@ -34,11 +36,12 @@ function emptyForm() {
 
 export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
   const { user: currentUser } = useAuth()
+  const confirm = useConfirm()
   const [users, setUsers] = useState<AdminUserRecord[]>([])
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const toast = useToast()
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
 
@@ -80,7 +83,6 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
     })
     setShowForm(true)
     setError(null)
-    setMessage(null)
   }
 
   function resetForm() {
@@ -94,13 +96,11 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
     setForm(emptyForm())
     setShowForm(true)
     setError(null)
-    setMessage(null)
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
-    setMessage(null)
     setSaving(true)
     try {
       if (editingId) {
@@ -117,7 +117,7 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
           setError(response.message || 'Failed to update user.')
           return
         }
-        setMessage(response.message)
+        toast.success(response.message)
       } else {
         const response = await createAdminUserApi({
           employeeCode: form.employeeCode.trim(),
@@ -132,7 +132,7 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
           setError(response.message || 'Failed to create user.')
           return
         }
-        setMessage(response.message)
+        toast.success(response.message)
       }
       resetForm()
       await loadUsers()
@@ -148,9 +148,18 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
       setError('You cannot delete your own account.')
       return
     }
-    if (!window.confirm(`Delete ${user.name}? This cannot be undone.`)) return
+    const confirmed = await confirm({
+      title: 'Delete user',
+      message: (
+        <>
+          Are you sure you want to delete{' '}
+          <span className="font-bold text-foreground">{user.name}</span>? This action
+          cannot be undone.
+        </>
+      ),
+    })
+    if (!confirmed) return
     setError(null)
-    setMessage(null)
     try {
       const response = await deleteAdminUserApi(user.id)
       if (!response.success) {
@@ -158,7 +167,7 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
         return
       }
       if (editingId === user.id) resetForm()
-      setMessage(response.message)
+      toast.success(response.message)
       await loadUsers()
     } catch (deleteError) {
       setError(
@@ -335,11 +344,6 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-red-50 px-4 py-3 text-sm font-medium text-danger">
           {error}
-        </div>
-      ) : null}
-      {message ? (
-        <div className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
-          {message}
         </div>
       ) : null}
 

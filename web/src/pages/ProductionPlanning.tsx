@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useToast } from '../components/Toast'
 import {
   AlertCircle,
   AlertTriangle,
@@ -269,7 +270,7 @@ export function ProductionPlanning() {
   const [fetchingDetails, setFetchingDetails] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const toast = useToast()
 
   // Filter Fields (Top Section Left Column) - Restored from localStorage across reloads
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -565,7 +566,7 @@ export function ProductionPlanning() {
           })),
         )
       }
-      setNotice('Production plan, batch, and user lists refreshed.')
+      toast.success('Production plan and batch lists refreshed.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh data.')
     } finally {
@@ -990,7 +991,7 @@ export function ProductionPlanning() {
 
       if (matchedPlan) {
         generateRecordsForPlan(matchedPlan, fetchedBatches)
-        setNotice(
+         toast.success(
           `Fetched database records for Plan ${matchedPlan.planNo} (Batch ${matchedPlan.batchNo})${selectedUser ? ` - Operator: ${selectedUser}` : ''}.`,
         )
       } else {
@@ -1028,10 +1029,10 @@ export function ProductionPlanning() {
             reworkQuantity: 0,
           }
           generateRecordsForPlan(dynamicPlan, fetchedBatches)
-          setNotice(`Fetched database records for Batch ${matchingBatch.batchNo}.`)
+          toast.success(`Fetched database records for Batch ${matchingBatch.batchNo}.`)
         } else {
           setSerialRecords([])
-          setNotice('No records found for the selected filters in database.')
+          toast.success('No records found for the selected filters in database.')
         }
       }
     } catch (err) {
@@ -1599,7 +1600,7 @@ export function ProductionPlanning() {
       // 5. Clear selections and reset comment box
       setSelectedSerialIds(new Set())
       setFormComments('')
-      setNotice(
+      toast.success(
         `Successfully marked ${selectedCount} serial(s) as Completed and stored in completed collection!`,
       )
     } else {
@@ -1693,19 +1694,11 @@ export function ProductionPlanning() {
       // 6. Clear selections and comments after applying update so table displays updated rows cleanly
       setSelectedSerialIds(new Set())
       setFormComments('')
-      setNotice(
+         toast.success(
         `Successfully updated ${selectedCount} serial record(s) to ${updatedPercent}% (${updatedStatus.replace(/_/g, ' ')})! Previous progress overridden with current value (${updatedPercent}%).`,
       )
     }
   }
-
-  // Auto clear notice
-  useEffect(() => {
-    if (notice) {
-      const timer = setTimeout(() => setNotice(null), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [notice])
 
   const isAllSelected =
     workUpdateRecords.length > 0 && selectedSerialIds.size === workUpdateRecords.length
@@ -1725,17 +1718,6 @@ export function ProductionPlanning() {
         </div>
       ) : null}
 
-      {notice ? (
-        <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-50/70 px-4 py-2.5 text-xs font-semibold text-emerald-800">
-          <div className="flex items-center gap-2">
-            <Check className="h-4 w-4 shrink-0 text-emerald-600" />
-            <span>{notice}</span>
-          </div>
-          <button type="button" onClick={() => setNotice(null)} aria-label="Close notice">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : null}
 
       {/* Top Section Divided into Two Columns */}
       <section className="rounded-2xl border border-border bg-surface-raised p-3.5 sm:p-4 shadow-sm">

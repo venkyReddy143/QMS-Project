@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { CheckCircle2, Pencil, PlusCircle, Trash2, X } from 'lucide-react'
+import { useConfirm } from '../components/ConfirmDialog'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchEmployeesApi } from '../lib/api/batches'
 import { fetchNextOrderNoApi } from '../lib/api/orders'
@@ -106,6 +107,7 @@ function todayIsoDate(): string {
 }
 
 export function CreateOrder() {
+  const confirm = useConfirm()
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -325,7 +327,18 @@ export function CreateOrder() {
     setEditingKey(null)
   }
 
-  function removeLine(key: string) {
+  async function removeLine(key: string, label: string) {
+    const confirmed = await confirm({
+      title: 'Remove product',
+      message: (
+        <>
+          Are you sure you want to remove{' '}
+          <span className="font-bold text-foreground">{label}</span> from this order?
+        </>
+      ),
+      confirmLabel: 'Remove',
+    })
+    if (!confirmed) return
     setLines((current) => current.filter((line) => line.key !== key))
   }
 
@@ -855,7 +868,7 @@ export function CreateOrder() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => removeLine(line.key)}
+                                  onClick={() => void removeLine(line.key, selected?.name ?? `product ${index + 1}`)}
                                   className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted hover:border-danger hover:text-danger"
                                   aria-label={`Remove product ${index + 1}`}
                                 >

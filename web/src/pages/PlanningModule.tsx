@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useToast } from '../components/Toast'
 import {
   Calendar,
-  CheckCircle2,
   Clock,
   Layers,
   PlusCircle,
@@ -99,7 +99,7 @@ export function PlanningModule() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const toast = useToast()
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
@@ -176,14 +176,6 @@ export function PlanningModule() {
       return () => clearTimeout(timer)
     }
   }, [dateFilter, customDate, shiftFilter, statusFilter, searchTerm])
-
-  // Clear notice after 5s
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [successMessage])
 
   // Select dropdown option builders
   const batchOptions = useMemo(() => {
@@ -406,7 +398,7 @@ export function PlanningModule() {
 
         const res = await updatePlanApi(editingPlan.id, payload)
         if (res.success && res.plan) {
-          setSuccessMessage(res.message || 'Production plan updated.')
+          toast.success(res.message || 'Production plan updated.')
           setIsModalOpen(false)
           refreshPlans()
         }
@@ -430,7 +422,7 @@ export function PlanningModule() {
 
         const res = await createPlanApi(payload)
         if (res.success && res.plan) {
-          setSuccessMessage(res.message || 'Production plan created successfully.')
+          toast.success(res.message || 'Production plan created successfully.')
           setIsModalOpen(false)
           refreshPlans()
         }
@@ -448,7 +440,7 @@ export function PlanningModule() {
     try {
       const res = await deletePlanApi(deletingPlan.id)
       if (res.success) {
-        setSuccessMessage(res.message || `Plan ${deletingPlan.planNo} deleted.`)
+        toast.success(res.message || `Plan ${deletingPlan.planNo} deleted.`)
         setDeletingPlan(null)
         refreshPlans()
       }
@@ -535,17 +527,6 @@ export function PlanningModule() {
         </div>
       ) : null}
 
-      {successMessage ? (
-        <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-50/70 px-4 py-3 text-sm font-semibold text-emerald-800">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            <span>{successMessage}</span>
-          </div>
-          <button type="button" onClick={() => setSuccessMessage(null)}>
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ) : null}
 
       {/* Statistics Cards */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
