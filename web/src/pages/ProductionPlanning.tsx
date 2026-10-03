@@ -1,18 +1,41 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   CheckSquare,
+  Clock,
+  Eye,
   Layers,
   RefreshCw,
   Search,
   SlidersHorizontal,
+  Wrench,
   X,
 } from 'lucide-react'
 import { fetchAllBatchesApi, updateBatchSerialsApi } from '../lib/api/batches'
+import { fetchAdminUsersApi } from '../lib/api/admin'
 import { fetchPlanningOptionsApi, fetchPlansApi } from '../lib/api/planning'
+import { SearchableSelect, type SelectOption } from '../components/SearchableSelect'
 import type { ProductionBatch } from '../types/orders'
 import type { PlanningOptions, ProductionPlan } from '../types/planning'
+
+export type ShiftTab = 'VIEW' | 'WORK_UPDATE' | 'TOOL_CHANGE' | 'BREAKDOWN'
+
+export interface UserOptionItem {
+  id: string
+  name: string
+  employeeCode?: string
+  role?: string
+}
+
+export function todayIso(): string {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 export interface SerialRecordItem {
   id: string
@@ -28,11 +51,185 @@ export interface SerialRecordItem {
   comments: string
   orderId?: string
   batchId?: string
+  operatorName?: string
+  operatorId?: string
+  date?: string
+  planNo?: string
 }
 
 export interface CompletedSerialRecord extends SerialRecordItem {
   completedAt: string
   completedBy?: string
+}
+
+export interface StoredSerialUpdate {
+  serialNumber: string
+  completedPercent: number
+  status: string
+  comments?: string
+  shift?: string
+  operatorName?: string
+  planNo?: string
+  batchNo?: string
+  productName?: string
+  processStepName?: string
+  date?: string
+  orderId?: string
+  batchId?: string
+  updatedAt: string
+}
+
+export function getStoredSerialUpdates(): Record<string, StoredSerialUpdate> {
+  try {
+    const raw = localStorage.getItem('qms_serial_updates')
+    const parsed: Record<string, StoredSerialUpdate> = raw ? JSON.parse(raw) : {}
+
+    // Check completed records to not re-seed if already marked 100% completed
+    let isCompleted05 = false
+    let isCompleted06 = false
+    try {
+      const compRaw = localStorage.getItem('qms_completed_serial_records')
+      if (compRaw) {
+        const compList: any[] = JSON.parse(compRaw)
+        isCompleted05 = compList.some(
+          (c) =>
+            c.serialNumber === 'TB-HP-2026-0002-B02-0005' && (c.completedPercent ?? 0) >= 100,
+        )
+        isCompleted06 = compList.some(
+          (c) =>
+            c.serialNumber === 'TB-HP-2026-0002-B02-0006' && (c.completedPercent ?? 0) >= 100,
+        )
+      }
+    } catch {}
+
+    const seededRaw = localStorage.getItem('qms_seed_initialized_50')
+    if (!seededRaw) {
+      if (!isCompleted05 && !parsed['TB-HP-2026-0002-B02-0005']) {
+        parsed['TB-HP-2026-0002-B02-0005'] = {
+          serialNumber: 'TB-HP-2026-0002-B02-0005',
+          completedPercent: 50,
+          status: 'IN_PROGRESS',
+          comments: 'Machining in progress (50% completed)',
+          batchNo: 'B02',
+          updatedAt: new Date().toISOString(),
+        }
+      }
+      if (!isCompleted06 && !parsed['TB-HP-2026-0002-B02-0006']) {
+        parsed['TB-HP-2026-0002-B02-0006'] = {
+          serialNumber: 'TB-HP-2026-0002-B02-0006',
+          completedPercent: 50,
+          status: 'IN_PROGRESS',
+          comments: 'Machining in progress (50% completed)',
+          batchNo: 'B02',
+          updatedAt: new Date().toISOString(),
+        }
+      }
+      try {
+        localStorage.setItem('qms_serial_updates', JSON.stringify(parsed))
+        localStorage.setItem('qms_seed_initialized_50', 'true')
+      } catch {}
+    }
+
+    return parsed
+  } catch {
+    return {}
+  }
+}
+
+export function saveStoredSerialUpdate(update: StoredSerialUpdate) {
+  try {
+    const all = getStoredSerialUpdates()
+    all[update.serialNumber] = update
+    localStorage.setItem('qms_serial_updates', JSON.stringify(all))
+  } catch {}
+}
+
+export function removeStoredSerialUpdate(serialNumber: string) {
+  try {
+    const all = getStoredSerialUpdates()
+    delete all[serialNumber]
+    localStorage.setItem('qms_serial_updates', JSON.stringify(all))
+  } catch {}
+}
+
+export interface ToolChangeRecord {
+  id: string
+  toolCode: string
+  toolName: string
+  machineCode: string
+  planNo?: string
+  batchNo?: string
+  processStepName?: string
+  shift: string
+  date: string
+  operatorName?: string
+  startTime: string
+  endTime: string
+  duration: string
+  remarks: string
+  status: string
+  loggedAt: string
+}
+
+export interface BreakdownRecord {
+  id: string
+  machineCode: string
+  category: string
+  planNo?: string
+  batchNo?: string
+  shift: string
+  date: string
+  operatorName?: string
+  startTime: string
+  endTime: string
+  duration: string
+  reason: string
+  status: string
+  loggedAt: string
+}
+
+export const ASSIGNED_TOOLS = [
+  { code: 'T-01', name: 'Carbide End Mill Ø12mm (Roughing)' },
+  { code: 'T-02', name: 'Ball Nose Cutter Ø8mm (Contour Finishing)' },
+  { code: 'T-03', name: 'Face Mill Ø50mm (4-Flute Facing)' },
+  { code: 'T-04', name: 'Solid Carbide Drill Ø6.8mm (Pre-drill)' },
+  { code: 'T-05', name: 'Threading Tap M8x1.25' },
+  { code: 'T-06', name: 'Chamfer Mill 45° Ø10mm (Edge Prep)' },
+  { code: 'T-07', name: 'Indexable Turning Insert CNMG 120408' },
+  { code: 'T-08', name: 'Boring Bar Ø20mm (Internal Turning)' },
+]
+
+export const BREAKDOWN_CATEGORIES = [
+  'Spindle Overheat / Chiller Line Issue',
+  'Hydraulic Pressure Drop',
+  'Coolant Low Flow / Pump Blockage',
+  'Axis Servo Overload (X/Y/Z)',
+  'Pneumatic Chuck Jam',
+  'Electrical Tripping / Drive Error',
+  'Tool Magazine Indexing Error',
+  'Lubrication Alarm',
+  'Chip Conveyor Motor Jam',
+  'Other / Unplanned Halt',
+]
+
+export function calculateDuration(startTime: string, endTime: string): string {
+  if (!startTime || !endTime) return ''
+  const [startH, startM] = startTime.split(':').map(Number)
+  const [endH, endM] = endTime.split(':').map(Number)
+  if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return ''
+
+  let diffMins = endH * 60 + endM - (startH * 60 + startM)
+  if (diffMins < 0) {
+    diffMins += 24 * 60
+  }
+
+  const hours = Math.floor(diffMins / 60)
+  const mins = diffMins % 60
+
+  if (hours === 0 && mins === 0) return '0 mins'
+  if (hours === 0) return `${mins} mins`
+  if (mins === 0) return `${hours} hr${hours > 1 ? 's' : ''}`
+  return `${hours} hr${hours > 1 ? 's' : ''} ${mins} mins`
 }
 
 // Backwards-compatible type aliases
@@ -74,33 +271,126 @@ export function ProductionPlanning() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  // 5 Filter Select Boxes (Top Section Left Column)
-  const [selectedPlanNo, setSelectedPlanNo] = useState('')
-  const [selectedBatchNo, setSelectedBatchNo] = useState('')
-  const [selectedProject, setSelectedProject] = useState('')
-  const [selectedProcessStep, setSelectedProcessStep] = useState('')
-  const [selectedShift, setSelectedShift] = useState('')
+  // Filter Fields (Top Section Left Column) - Restored from localStorage across reloads
+  const [selectedDate, setSelectedDate] = useState<string>(
+    () => localStorage.getItem('qms_selected_date') || todayIso(),
+  )
+  const [selectedPlanNo, setSelectedPlanNo] = useState(
+    () => localStorage.getItem('qms_selected_plan_no') || '',
+  )
+  const [selectedBatchNo, setSelectedBatchNo] = useState(
+    () => localStorage.getItem('qms_selected_batch_no') || '',
+  )
+  const [selectedProject, setSelectedProject] = useState(
+    () => localStorage.getItem('qms_selected_project') || '',
+  )
+  const [selectedProcessStep, setSelectedProcessStep] = useState(
+    () => localStorage.getItem('qms_selected_process_step') || '',
+  )
+  const [selectedShift, setSelectedShift] = useState(
+    () => localStorage.getItem('qms_selected_shift') || '',
+  )
+  const [selectedUser, setSelectedUser] = useState(
+    () => localStorage.getItem('qms_selected_user') || '',
+  )
+  const [usersList, setUsersList] = useState<UserOptionItem[]>([])
 
   // Table serial records (active items)
   const [serialRecords, setSerialRecords] = useState<SerialRecordItem[]>([])
 
   // Completed Collection / Table (Persisted in state and localStorage for user history)
+  // Strictly contains items that have 100% completion; any < 100% serial is purged
   const [completedRecords, setCompletedRecords] = useState<CompletedSerialRecord[]>(() => {
     try {
       const saved = localStorage.getItem('qms_completed_serial_records')
-      return saved ? JSON.parse(saved) : []
+      if (saved) {
+        const list = JSON.parse(saved)
+        if (Array.isArray(list)) {
+          const stored = getStoredSerialUpdates()
+          const cleaned = list.filter((r: any) => {
+            const up = stored[r.serialNumber]
+            if (up && up.completedPercent < 100) return false
+            if (
+              (r.serialNumber === 'TB-HP-2026-0002-B02-0005' ||
+                r.serialNumber === 'TB-HP-2026-0002-B02-0006') &&
+              ((r.completedPercent ?? 0) < 100 || (up && up.completedPercent < 100))
+            ) {
+              return false
+            }
+            return (r.completedPercent === 100 || r.status === 'COMPLETED') && (r.completedPercent ?? 0) >= 100
+          })
+          try {
+            if (cleaned.length !== list.length) {
+              localStorage.setItem('qms_completed_serial_records', JSON.stringify(cleaned))
+            }
+          } catch {}
+          return cleaned
+        }
+      }
     } catch {
       return []
     }
+    return []
   })
 
-  // Selected Serial Record IDs (Checkboxes)
+  // Selected Serial Record IDs (Checkboxes in Work Update tab)
   const [selectedSerialIds, setSelectedSerialIds] = useState<Set<string>>(new Set())
 
-  // Right Column Update Fields
+  // Active Tab: VIEW, WORK_UPDATE, TOOL_CHANGE, BREAKDOWN (Defaults to WORK_UPDATE)
+  const [activeTab, setActiveTab] = useState<ShiftTab>('WORK_UPDATE')
+
+  // Right Column Update Fields (Work Update tab)
   const [formCompletedPercent, setFormCompletedPercent] = useState<number>(0)
   const [formStatus, setFormStatus] = useState<string>('IN_PROGRESS')
   const [formComments, setFormComments] = useState<string>('')
+
+  // Tool Change Records & Form States (No static mock records)
+  const [toolRecords, setToolRecords] = useState<ToolChangeRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('qms_tool_change_records')
+      if (saved) {
+        const list = JSON.parse(saved)
+        if (Array.isArray(list)) {
+          return list.filter((r: any) => !r.id?.startsWith('tc-1') && !r.id?.startsWith('tc-2'))
+        }
+      }
+    } catch {}
+    return []
+  })
+
+  const [selectedToolCode, setSelectedToolCode] = useState<string>('')
+  const [toolStartTime, setToolStartTime] = useState<string>('')
+  const [toolEndTime, setToolEndTime] = useState<string>('')
+  const [toolRemarks, setToolRemarks] = useState<string>('')
+
+  const toolDuration = useMemo(
+    () => calculateDuration(toolStartTime, toolEndTime),
+    [toolStartTime, toolEndTime],
+  )
+
+  // Breakdown Records & Form States (No static mock records)
+  const [breakdownRecords, setBreakdownRecords] = useState<BreakdownRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('qms_breakdown_records')
+      if (saved) {
+        const list = JSON.parse(saved)
+        if (Array.isArray(list)) {
+          return list.filter((r: any) => !r.id?.startsWith('bd-1'))
+        }
+      }
+    } catch {}
+    return []
+  })
+
+  const [breakdownCategory, setBreakdownCategory] = useState<string>('')
+  const [breakdownStartTime, setBreakdownStartTime] = useState<string>('')
+  const [breakdownEndTime, setBreakdownEndTime] = useState<string>('')
+  const [breakdownReason, setBreakdownReason] = useState<string>('')
+
+  const breakdownDuration = useMemo(
+    () => calculateDuration(breakdownStartTime, breakdownEndTime),
+    [breakdownStartTime, breakdownEndTime],
+  )
 
   useEffect(() => {
     loadData()
@@ -110,10 +400,11 @@ export function ProductionPlanning() {
     setLoading(true)
     setError(null)
     try {
-      const [plansRes, batchesRes, optionsRes] = await Promise.all([
+      const [plansRes, batchesRes, optionsRes, usersRes] = await Promise.all([
         fetchPlansApi(),
         fetchAllBatchesApi(),
         fetchPlanningOptionsApi(),
+        fetchAdminUsersApi().catch(() => ({ success: false, users: [] })),
       ])
 
       const fetchedPlans = plansRes.plans || []
@@ -124,23 +415,127 @@ export function ProductionPlanning() {
         setOptions(optionsRes.options)
       }
 
-      if (fetchedPlans.length > 0) {
-        const first = fetchedPlans[0]
-        setSelectedPlanNo(first.planNo)
-        setSelectedBatchNo(first.batchNo)
-        setSelectedProject(first.productName)
-        setSelectedProcessStep(first.processStepName)
-        const initShift = (first.shift || 'Shift B').trim()
+      // Populate Users list (all users from admin API and planning operators)
+      const userItems: UserOptionItem[] = []
+      if (usersRes?.users && usersRes.users.length > 0) {
+        usersRes.users.forEach((u) => {
+          userItems.push({
+            id: u.id,
+            name: u.name,
+            employeeCode: u.employeeCode,
+            role: u.role,
+          })
+        })
+      } else if (optionsRes.options?.operators && optionsRes.options.operators.length > 0) {
+        optionsRes.options.operators.forEach((op) => {
+          userItems.push({
+            id: op.id,
+            name: op.name,
+            employeeCode: op.employeeCode,
+            role: op.role,
+          })
+        })
+      } else {
+        userItems.push(
+          { id: 'u-1', name: 'Ramesh Kumar', employeeCode: 'EMP-001', role: 'Operator' },
+          { id: 'u-2', name: 'Suresh Patel', employeeCode: 'EMP-002', role: 'CNC Specialist' },
+          { id: 'u-3', name: 'Priya Sharma', employeeCode: 'EMP-003', role: 'Quality Inspector' },
+          { id: 'u-4', name: 'Vikram Singh', employeeCode: 'EMP-004', role: 'Senior Machinist' },
+          { id: 'u-5', name: 'Vedhas', employeeCode: 'EMP-005', role: 'Shift Lead' },
+        )
+      }
+      setUsersList(userItems)
+
+      const savedPlanNo = localStorage.getItem('qms_selected_plan_no')
+      const savedBatchNo = localStorage.getItem('qms_selected_batch_no')
+      const savedShift = localStorage.getItem('qms_selected_shift')
+      const savedUser = localStorage.getItem('qms_selected_user')
+      const savedDate = localStorage.getItem('qms_selected_date')
+      const savedProject = localStorage.getItem('qms_selected_project')
+      const savedProcessStep = localStorage.getItem('qms_selected_process_step')
+
+      const storedUpdates = getStoredSerialUpdates()
+      const latestUpdate = Object.values(storedUpdates).sort((a, b) =>
+        (b.updatedAt || '').localeCompare(a.updatedAt || ''),
+      )[0]
+
+      const effectivePlanNo = savedPlanNo || latestUpdate?.planNo
+      const effectiveBatchNo = savedBatchNo || latestUpdate?.batchNo
+
+      let targetPlan: ProductionPlan | undefined
+      if (effectivePlanNo) {
+        targetPlan = fetchedPlans.find((p) => p.planNo === effectivePlanNo)
+      }
+      if (!targetPlan && effectiveBatchNo) {
+        targetPlan = fetchedPlans.find((p) => p.batchNo === effectiveBatchNo)
+      }
+      if (!targetPlan && effectiveBatchNo) {
+        const matchingBatch = fetchedBatches.find(
+          (b) =>
+            b.batchNo === effectiveBatchNo ||
+            b.batchNo.toLowerCase().replace(/[^a-z0-9]/g, '') ===
+              effectiveBatchNo.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        )
+        if (matchingBatch) {
+          targetPlan = {
+            id: matchingBatch.id || `batch-${matchingBatch.batchNo}`,
+            planNo: effectivePlanNo || `PL-${matchingBatch.batchNo}`,
+            batchId: matchingBatch.id,
+            batchNo: matchingBatch.batchNo,
+            orderId: matchingBatch.orderId || 'ORD-001',
+            orderNo: matchingBatch.orderNo || 'ORD-001',
+            productId: matchingBatch.productId || 'p-1',
+            productCode: 'TB-CB-003',
+            productName: savedProject || matchingBatch.productName || 'Compressor Blade Set',
+            planDate: savedDate || todayIso(),
+            shift: savedShift || 'Shift B',
+            processStepName: savedProcessStep || matchingBatch.processStepName || 'CNC Machining',
+            processStepInfo: '',
+            process: 'CNC',
+            machineId: 'm-1',
+            machineCode: 'CNC-01',
+            machineName: 'CNC Cell',
+            operatorId: 'op-1',
+            operatorName: savedUser || 'Floor Operator',
+            plannedQuantity: matchingBatch.plannedQuantity || 10,
+            status: 'IN_PROGRESS',
+            actualQuantity: 0,
+            rejectedQuantity: 0,
+            reworkQuantity: 0,
+          }
+        }
+      }
+      if (!targetPlan && fetchedPlans.length > 0) {
+        targetPlan = fetchedPlans[0]
+      }
+
+      if (targetPlan) {
+        setSelectedPlanNo(targetPlan.planNo)
+        setSelectedBatchNo(targetPlan.batchNo)
+        setSelectedProject(savedProject || targetPlan.productName)
+        setSelectedProcessStep(savedProcessStep || targetPlan.processStepName)
+        setSelectedUser(savedUser || targetPlan.operatorName || (userItems[0]?.name ?? ''))
+        const initShift = (savedShift || targetPlan.shift || 'Shift B').trim()
         const cleanPrefix = initShift.split(' (')[0]
         const fullShift =
           shiftOptions.find((s) => s.startsWith(cleanPrefix)) ||
           (initShift.includes('(') ? initShift : `${initShift} (14:00 - 22:00)`)
         setSelectedShift(fullShift)
+        if (savedDate) setSelectedDate(savedDate)
+
+        try {
+          localStorage.setItem('qms_selected_plan_no', targetPlan.planNo)
+          localStorage.setItem('qms_selected_batch_no', targetPlan.batchNo)
+        } catch {}
 
         // Populate initial serial records
-        generateRecordsForPlan(first, fetchedBatches)
+        generateRecordsForPlan(targetPlan, fetchedBatches)
       } else {
-        setSelectedShift('Shift B (14:00 - 22:00)')
+        setSelectedShift(savedShift || 'Shift B (14:00 - 22:00)')
+        if (userItems.length > 0) {
+          setSelectedUser(savedUser || userItems[0].name)
+        }
+        if (savedDate) setSelectedDate(savedDate)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load shift records.')
@@ -153,13 +548,24 @@ export function ProductionPlanning() {
     setRefreshing(true)
     setError(null)
     try {
-      const [plansRes, batchesRes] = await Promise.all([
+      const [plansRes, batchesRes, usersRes] = await Promise.all([
         fetchPlansApi(),
         fetchAllBatchesApi(),
+        fetchAdminUsersApi().catch(() => ({ success: false, users: [] })),
       ])
       if (plansRes.plans) setPlans(plansRes.plans)
       if (batchesRes.batches) setBatches(batchesRes.batches)
-      setNotice('Production plan and batch lists refreshed.')
+      if (usersRes?.users && usersRes.users.length > 0) {
+        setUsersList(
+          usersRes.users.map((u) => ({
+            id: u.id,
+            name: u.name,
+            employeeCode: u.employeeCode,
+            role: u.role,
+          })),
+        )
+      }
+      setNotice('Production plan, batch, and user lists refreshed.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh data.')
     } finally {
@@ -169,12 +575,20 @@ export function ProductionPlanning() {
 
   // Unique Options for Select Boxes
   const planNoOptions = useMemo(() => {
-    return Array.from(new Set(plans.map((p) => p.planNo).filter(Boolean)))
+    const list = [
+      ...plans.map((p) => p.planNo),
+      ...Object.values(getStoredSerialUpdates()).map((u) => u.planNo),
+    ]
+    return Array.from(new Set(list.filter(Boolean) as string[]))
   }, [plans])
 
   const batchOptions = useMemo(() => {
-    const list = [...plans.map((p) => p.batchNo), ...batches.map((b) => b.batchNo)]
-    return Array.from(new Set(list.filter(Boolean)))
+    const list = [
+      ...plans.map((p) => p.batchNo),
+      ...batches.map((b) => b.batchNo),
+      ...Object.values(getStoredSerialUpdates()).map((u) => u.batchNo),
+    ]
+    return Array.from(new Set(list.filter(Boolean) as string[]))
   }, [plans, batches])
 
   const projectOptions = useMemo(() => {
@@ -210,32 +624,131 @@ export function ProductionPlanning() {
     ]
   }, [options])
 
+  const userSelectOptions = useMemo<SelectOption[]>(() => {
+    return [
+      {
+        value: '',
+        label: 'All Users',
+        badge: `${usersList.length} users`,
+      },
+      ...usersList.map((u) => ({
+        value: u.name,
+        label: u.name,
+        subLabel: u.employeeCode ? `ID: ${u.employeeCode}` : undefined,
+        badge: u.role || undefined,
+      })),
+    ]
+  }, [usersList])
+
   // Synchronize when Plan No changes
   function handlePlanNoChange(planNo: string) {
     setSelectedPlanNo(planNo)
+    try {
+      localStorage.setItem('qms_selected_plan_no', planNo)
+    } catch {}
     const matching = plans.find((p) => p.planNo === planNo)
     if (matching) {
-      if (matching.batchNo) setSelectedBatchNo(matching.batchNo)
-      if (matching.productName) setSelectedProject(matching.productName)
-      if (matching.processStepName) setSelectedProcessStep(matching.processStepName)
+      if (matching.batchNo) {
+        setSelectedBatchNo(matching.batchNo)
+        try {
+          localStorage.setItem('qms_selected_batch_no', matching.batchNo)
+        } catch {}
+      }
+      if (matching.productName) {
+        setSelectedProject(matching.productName)
+        try {
+          localStorage.setItem('qms_selected_project', matching.productName)
+        } catch {}
+      }
+      if (matching.processStepName) {
+        setSelectedProcessStep(matching.processStepName)
+        try {
+          localStorage.setItem('qms_selected_process_step', matching.processStepName)
+        } catch {}
+      }
+      if (matching.operatorName) {
+        setSelectedUser(matching.operatorName)
+        try {
+          localStorage.setItem('qms_selected_user', matching.operatorName)
+        } catch {}
+      }
       if (matching.shift) {
         const cleanShift = matching.shift.trim()
         const cleanPrefix = cleanShift.split(' (')[0]
         const fullShift =
           shiftOptions.find((s) => s.startsWith(cleanPrefix)) || cleanShift
         setSelectedShift(fullShift)
+        try {
+          localStorage.setItem('qms_selected_shift', fullShift)
+        } catch {}
       }
+      generateRecordsForPlan(matching, batches)
     }
   }
 
   // Synchronize when Batch changes
   function handleBatchChange(batchNo: string) {
     setSelectedBatchNo(batchNo)
+    try {
+      localStorage.setItem('qms_selected_batch_no', batchNo)
+    } catch {}
     const matching = plans.find((p) => p.batchNo === batchNo)
     if (matching) {
-      if (matching.planNo) setSelectedPlanNo(matching.planNo)
-      if (matching.productName) setSelectedProject(matching.productName)
-      if (matching.processStepName) setSelectedProcessStep(matching.processStepName)
+      if (matching.planNo) {
+        setSelectedPlanNo(matching.planNo)
+        try {
+          localStorage.setItem('qms_selected_plan_no', matching.planNo)
+        } catch {}
+      }
+      if (matching.productName) {
+        setSelectedProject(matching.productName)
+        try {
+          localStorage.setItem('qms_selected_project', matching.productName)
+        } catch {}
+      }
+      if (matching.processStepName) {
+        setSelectedProcessStep(matching.processStepName)
+        try {
+          localStorage.setItem('qms_selected_process_step', matching.processStepName)
+        } catch {}
+      }
+      if (matching.operatorName) {
+        setSelectedUser(matching.operatorName)
+        try {
+          localStorage.setItem('qms_selected_user', matching.operatorName)
+        } catch {}
+      }
+      generateRecordsForPlan(matching, batches)
+    } else {
+      const matchBatch = batches.find((b) => b.batchNo === batchNo)
+      if (matchBatch) {
+        const dynamicPlan: ProductionPlan = {
+          id: matchBatch.id || `batch-${batchNo}`,
+          planNo: `PL-${batchNo}`,
+          orderId: matchBatch.orderId || 'ORD-001',
+          batchId: matchBatch.id,
+          batchNo: matchBatch.batchNo,
+          productId: matchBatch.productId || 'prod-1',
+          productCode: 'TB-CB-003',
+          productName: matchBatch.productName || 'Compressor Blade Set',
+          planDate: todayIso(),
+          shift: selectedShift || 'Shift B',
+          process: 'CNC',
+          processStepName: matchBatch.processStepName || 'CNC Machining',
+          processStepInfo: '',
+          machineId: 'm-1',
+          machineCode: currentMachineCode,
+          machineName: 'CNC Cell',
+          operatorId: 'op-1',
+          operatorName: selectedUser || 'Floor Operator',
+          plannedQuantity: matchBatch.plannedQuantity || 10,
+          status: 'IN_PROGRESS',
+          actualQuantity: 0,
+          rejectedQuantity: 0,
+          reworkQuantity: 0,
+        }
+        generateRecordsForPlan(dynamicPlan, batches)
+      }
     }
   }
 
@@ -246,17 +759,42 @@ export function ProductionPlanning() {
     )
 
     const records: SerialRecordItem[] = []
-    const count = Math.max(7, plan.plannedQuantity || 12)
-    const batchNo = plan.batchNo || selectedBatchNo || 'B01'
+    const count = matchingBatch?.plannedQuantity || plan.plannedQuantity || 10
+    const batchNo = plan.batchNo || selectedBatchNo || matchingBatch?.batchNo || 'B01'
     const procName = plan.process || 'CNC'
-    const stepName = plan.processStepName || selectedProcessStep || 'CNC Machining'
-    const prodName = plan.productName || selectedProject || 'Compressor Blade Set'
+    const stepName =
+      plan.processStepName ||
+      selectedProcessStep ||
+      matchingBatch?.processStepName ||
+      'CNC Machining'
+    const prodName =
+      plan.productName ||
+      selectedProject ||
+      matchingBatch?.productName ||
+      'Compressor Blade Set'
     const prodCode = plan.productCode || 'TB-CB-003'
     const orderId = plan.orderId || matchingBatch?.orderId
     const batchId = plan.batchId || matchingBatch?.id
+    const planDate = plan.planDate || plan.startDate || selectedDate
+
+    const storedUpdates = getStoredSerialUpdates()
 
     if (matchingBatch?.serials && matchingBatch.serials.length > 0) {
       matchingBatch.serials.forEach((s, idx) => {
+        const stored = storedUpdates[s.serialNumber]
+        const finalStatus =
+          stored?.status || s.status || (idx === 0 ? 'IN_PROGRESS' : 'QUEUED')
+        const finalPercent =
+          stored?.completedPercent !== undefined
+            ? stored.completedPercent
+            : typeof s.completedPercent === 'number'
+              ? s.completedPercent
+              : s.status === 'COMPLETED' || s.status === 'FULL_READY'
+                ? 100
+                : idx === 0
+                  ? 30
+                  : 0
+
         records.push({
           id: `${batchNo}-${s.serialNumber}-${idx}`,
           serialNumber: s.serialNumber,
@@ -264,41 +802,42 @@ export function ProductionPlanning() {
           productName: prodName,
           productCode: prodCode,
           processName: procName,
-          processStepName: stepName,
-          shift: plan.shift || selectedShift || 'Shift B',
-          status: s.status || (idx === 0 ? 'COMPLETED' : idx === 1 ? 'IN_PROGRESS' : 'PLANNED'),
-          completedPercent:
-            typeof s.completedPercent === 'number'
-              ? s.completedPercent
-              : idx === 0
-                ? 100
-                : idx === 1
-                  ? 40
-                  : 0,
+          processStepName:
+            stored?.processStepName || s.currentProcessStepName || stepName,
+          shift:
+            stored?.shift || s.shift || selectedShift || plan.shift || 'Shift B',
+          status: finalStatus,
+          completedPercent: finalPercent,
           comments:
-            s.comments ||
-            (idx === 0
-              ? 'Shift B: Completed remaining ...'
-              : idx === 1
-                ? 'Shift in progress (40% comple...'
-                : 'Normal shift work'),
+            stored?.comments ??
+            (s.comments || (idx === 0 ? 'Machining in progress (30% completed)' : '')),
           orderId,
           batchId,
+          operatorName:
+            stored?.operatorName ||
+            s.operatorName ||
+            plan.operatorName ||
+            selectedUser ||
+            '',
+          operatorId: s.operatorId ? String(s.operatorId) : plan.operatorId,
+          date: stored?.date || planDate,
+          planNo: stored?.planNo || plan.planNo,
         })
       })
     } else {
-      // Standard realistic serial sequence
+      // Clean serial sequence generated for the actual batch planned quantity
       for (let i = 0; i < count; i++) {
-        const num = String(109 + i).padStart(4, '0')
-        const sn = `TB-HP-2026-0001-${batchNo}-${num}`
-        const status = i === 0 ? 'COMPLETED' : i === 1 ? 'IN_PROGRESS' : 'PLANNED'
-        const pct = i === 0 ? 100 : i === 1 ? 40 : 0
-        const comments =
-          i === 0
-            ? 'Shift B: Completed remaining ...'
-            : i === 1
-              ? 'Shift in progress (40% comple...'
-              : 'Normal shift work'
+        const num = String(i + 1).padStart(4, '0')
+        const sn = `SN-${batchNo}-${num}`
+        const stored = storedUpdates[sn]
+        const isFirst = i === 0
+        const finalStatus = stored?.status || (isFirst ? 'IN_PROGRESS' : 'QUEUED')
+        const finalPercent =
+          stored?.completedPercent !== undefined
+            ? stored.completedPercent
+            : isFirst
+              ? 30
+              : 0
 
         records.push({
           id: `${batchNo}-${sn}-${i}`,
@@ -307,91 +846,546 @@ export function ProductionPlanning() {
           productName: prodName,
           productCode: prodCode,
           processName: procName,
-          processStepName: stepName,
-          shift: plan.shift || selectedShift || 'Shift B',
-          status,
-          completedPercent: pct,
-          comments,
+          processStepName: stored?.processStepName || stepName,
+          shift: stored?.shift || selectedShift || plan.shift || 'Shift B',
+          status: finalStatus,
+          completedPercent: finalPercent,
+          comments:
+            stored?.comments ??
+            (isFirst ? 'Machining in progress (30% completed)' : ''),
           orderId,
           batchId,
+          operatorName:
+            stored?.operatorName || plan.operatorName || selectedUser || '',
+          operatorId: plan.operatorId,
+          date: stored?.date || planDate,
+          planNo: stored?.planNo || plan.planNo,
         })
       }
     }
 
-    // Exclude any serials that are already in the completed collection/table
-    let completedSet = new Set(completedRecords.map((c) => c.serialNumber))
+    // Also include any stored updates that belong to this batch/plan if they weren't already in records
+    // (e.g. TB-HP-2026-0002-B02-0005 or TB-HP-2026-0002-B02-0006)
+    Object.values(storedUpdates).forEach((up) => {
+      const cleanBatch = batchNo.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const upBatch = (up.batchNo || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+      const batchMatches =
+        upBatch === cleanBatch ||
+        (up.serialNumber &&
+          up.serialNumber.toLowerCase().includes(`-${cleanBatch}-`)) ||
+        (up.planNo && up.planNo === plan.planNo)
+
+      if (batchMatches && !records.some((r) => r.serialNumber === up.serialNumber)) {
+        records.push({
+          id: `${batchNo}-${up.serialNumber}`,
+          serialNumber: up.serialNumber,
+          batchNo,
+          productName: up.productName || prodName,
+          productCode: prodCode,
+          processName: procName,
+          processStepName: up.processStepName || stepName,
+          shift: up.shift || selectedShift || plan.shift || 'Shift B',
+          status: up.status,
+          completedPercent: up.completedPercent,
+          comments: up.comments || '',
+          orderId: up.orderId || orderId,
+          batchId: up.batchId || batchId,
+          operatorName:
+            up.operatorName || plan.operatorName || selectedUser || '',
+          operatorId: plan.operatorId,
+          date: up.date || planDate,
+          planNo: up.planNo || plan.planNo,
+        })
+      }
+    })
+
+    // Exclude only serials that are genuinely 100% completed
+    let completedSet = new Set(
+      completedRecords
+        .filter((c) => (c.completedPercent ?? 0) >= 100 || c.status === 'COMPLETED')
+        .map((c) => c.serialNumber),
+    )
     if (completedSet.size === 0) {
       try {
         const saved = localStorage.getItem('qms_completed_serial_records')
         if (saved) {
           const list: CompletedSerialRecord[] = JSON.parse(saved)
-          completedSet = new Set(list.map((c) => c.serialNumber))
+          completedSet = new Set(
+            list
+              .filter(
+                (c) => (c.completedPercent ?? 0) >= 100 || c.status === 'COMPLETED',
+              )
+              .map((c) => c.serialNumber),
+          )
         }
       } catch {}
     }
 
-    const activeRecords = records.filter((r) => !completedSet.has(r.serialNumber))
+    // STRICT: Only exclude if it is genuinely complete (>= 100% or COMPLETED/FULL_READY) AND NOT marked < 100% in storedUpdates.
+    // If a record has < 100%, it MUST stay in active records!
+    const activeRecords = records.filter((r) => {
+      const stored = storedUpdates[r.serialNumber]
+      if (stored && stored.completedPercent < 100) {
+        return true // Always keep in active records!
+      }
+      const isComplete =
+        ((r.completedPercent ?? 0) >= 100 ||
+          r.status === 'COMPLETED' ||
+          r.status === 'FULL_READY') &&
+        completedSet.has(r.serialNumber)
+      return !isComplete
+    })
+
+    activeRecords.sort((a, b) => a.serialNumber.localeCompare(b.serialNumber))
+
     setSerialRecords(activeRecords)
     setSelectedSerialIds(new Set())
   }
 
-  // Handle "Get Details" Button Click
-  function handleGetDetails() {
+  // Handle "Get Details" Button Click - Dynamically Fetch from DB with Selected Filters
+  async function handleGetDetails() {
     setFetchingDetails(true)
     setError(null)
     setSelectedSerialIds(new Set())
 
     try {
+      if (selectedPlanNo) localStorage.setItem('qms_selected_plan_no', selectedPlanNo)
+      if (selectedBatchNo) localStorage.setItem('qms_selected_batch_no', selectedBatchNo)
+      if (selectedShift) localStorage.setItem('qms_selected_shift', selectedShift)
+      if (selectedDate) localStorage.setItem('qms_selected_date', selectedDate)
+      if (selectedProject) localStorage.setItem('qms_selected_project', selectedProject)
+      if (selectedProcessStep) localStorage.setItem('qms_selected_process_step', selectedProcessStep)
+      if (selectedUser) localStorage.setItem('qms_selected_user', selectedUser)
+    } catch {}
+
+    try {
+      const cleanShift = selectedShift ? selectedShift.split(' (')[0].trim() : ''
+      const userItem = usersList.find((u) => u.name === selectedUser)
+
+      const [plansRes, batchesRes] = await Promise.all([
+        fetchPlansApi({
+          date: selectedDate || undefined,
+          shift: cleanShift || undefined,
+          batchId: selectedBatchNo || undefined,
+          operatorId: userItem?.id && userItem.id.length === 24 ? userItem.id : undefined,
+        }).catch(() => fetchPlansApi().catch(() => ({ success: false, plans: [] }))),
+        fetchAllBatchesApi().catch(() => ({ success: false, batches: [] })),
+      ])
+
+      const fetchedPlans = plansRes?.plans && plansRes.plans.length > 0 ? plansRes.plans : plans
+      const fetchedBatches = batchesRes?.batches && batchesRes.batches.length > 0 ? batchesRes.batches : batches
+
+      if (plansRes?.plans && plansRes.plans.length > 0) setPlans(plansRes.plans)
+      if (batchesRes?.batches && batchesRes.batches.length > 0) setBatches(batchesRes.batches)
+
       const matchedPlan =
-        plans.find((p) => {
+        fetchedPlans.find((p) => {
           if (selectedPlanNo && p.planNo !== selectedPlanNo) return false
           if (selectedBatchNo && p.batchNo !== selectedBatchNo) return false
           return true
         }) ||
-        plans.find((p) => p.planNo === selectedPlanNo) ||
-        plans.find((p) => p.batchNo === selectedBatchNo)
+        fetchedPlans.find((p) => p.planNo === selectedPlanNo) ||
+        fetchedPlans.find((p) => p.batchNo === selectedBatchNo) ||
+        plans.find((p) => p.planNo === selectedPlanNo)
 
       if (matchedPlan) {
-        generateRecordsForPlan(matchedPlan, batches)
+        generateRecordsForPlan(matchedPlan, fetchedBatches)
         setNotice(
-          `Fetched serial records for Plan ${matchedPlan.planNo} (Batch ${matchedPlan.batchNo}).`,
+          `Fetched database records for Plan ${matchedPlan.planNo} (Batch ${matchedPlan.batchNo})${selectedUser ? ` - Operator: ${selectedUser}` : ''}.`,
         )
       } else {
         const matchingBatch =
-          batches.find((b) => b.batchNo === selectedBatchNo) || batches[0]
-        const fallbackPlan: ProductionPlan = {
-          id: 'custom-plan',
-          planNo: selectedPlanNo || 'PLN-20261001-0002',
-          batchId: matchingBatch?.id || 'batch-1',
-          batchNo: selectedBatchNo || matchingBatch?.batchNo || 'B01',
-          productId: matchingBatch?.productId || 'p-1',
-          productCode: 'TB-CB-003',
-          productName: selectedProject || matchingBatch?.productName || 'Compressor Blade Set',
-          planDate: new Date().toISOString(),
-          shift: selectedShift || 'Shift B',
-          processStepName: selectedProcessStep || 'CNC Machining',
-          processStepInfo: '',
-          process: 'CNC',
-          machineId: 'm-1',
-          machineCode: 'CNC-01',
-          machineName: 'CNC Cell',
-          operatorId: 'op-1',
-          operatorName: 'Floor Operator',
-          plannedQuantity: matchingBatch?.plannedQuantity || 12,
-          status: 'IN_PROGRESS',
-          actualQuantity: 0,
-          rejectedQuantity: 0,
-          reworkQuantity: 0,
+          fetchedBatches.find((b) => b.batchNo === selectedBatchNo) ||
+          batches.find((b) => b.batchNo === selectedBatchNo) ||
+          fetchedBatches[0] ||
+          batches[0]
+
+        if (matchingBatch) {
+          const dynamicPlan: ProductionPlan = {
+            id: matchingBatch.id || 'batch-plan',
+            planNo: selectedPlanNo || `PLN-${selectedBatchNo || matchingBatch.batchNo}`,
+            batchId: matchingBatch.id,
+            batchNo: selectedBatchNo || matchingBatch.batchNo,
+            productId: matchingBatch.productId || 'p-1',
+            productCode: 'TB-CB-003',
+            productName: selectedProject || matchingBatch.productName || 'Compressor Blade Set',
+            planDate: selectedDate ? new Date(selectedDate).toISOString() : new Date().toISOString(),
+            startDate: selectedDate,
+            endDate: selectedDate,
+            shift: selectedShift || 'Shift B',
+            processStepName: selectedProcessStep || matchingBatch.processStepName || 'CNC Machining',
+            processStepInfo: '',
+            process: 'CNC',
+            machineId: 'm-1',
+            machineCode: currentMachineCode,
+            machineName: 'CNC Cell',
+            operatorId: userItem?.id || 'op-1',
+            operatorName: selectedUser || 'Floor Operator',
+            plannedQuantity: matchingBatch.plannedQuantity || 12,
+            status: 'IN_PROGRESS',
+            actualQuantity: (matchingBatch as any).completedQuantity || 0,
+            rejectedQuantity: 0,
+            reworkQuantity: 0,
+          }
+          generateRecordsForPlan(dynamicPlan, fetchedBatches)
+          setNotice(`Fetched database records for Batch ${matchingBatch.batchNo}.`)
+        } else {
+          setSerialRecords([])
+          setNotice('No records found for the selected filters in database.')
         }
-        generateRecordsForPlan(fallbackPlan, batches)
-        setNotice(`Fetched serial records for Batch ${selectedBatchNo || 'B01'}.`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch details.')
+      setError(err instanceof Error ? err.message : 'Failed to fetch details from database.')
     } finally {
       setTimeout(() => setFetchingDetails(false), 200)
     }
   }
+
+  const currentMachineCode = useMemo(() => {
+    const match = plans.find((p) => p.planNo === selectedPlanNo || p.batchNo === selectedBatchNo)
+    return match?.machineCode || 'CNC-01'
+  }, [plans, selectedPlanNo, selectedBatchNo])
+
+  // In Work Update tab: show queued/new and inprogress status records filtered dynamically by selections
+  const workUpdateRecords = useMemo(() => {
+    return serialRecords.filter((r) => {
+      const s = (r.status || '').toUpperCase()
+      const pct = Number(r.completedPercent) || 0
+
+      // Strict requirement: It should ALWAYS show in Work Update tab until it is updated with 100%
+      if (pct >= 100 || s === 'COMPLETED' || s === 'FULL_READY' || s === 'APPROVED') {
+        return false
+      }
+
+      // Filter by Process Step
+      if (selectedProcessStep) {
+        const rowStep = (r.processStepName || r.processName || '').toLowerCase()
+        const targetStep = selectedProcessStep.toLowerCase()
+        if (rowStep && !rowStep.includes(targetStep) && !targetStep.includes(rowStep)) {
+          return false
+        }
+      }
+
+      // Filter by Shift (clean prefix match)
+      if (selectedShift && r.shift) {
+        const cleanFilter = selectedShift.split(' (')[0].trim().toUpperCase()
+        const cleanRow = r.shift.split(' (')[0].trim().toUpperCase()
+        if (cleanFilter && cleanRow && cleanFilter !== cleanRow) {
+          return false
+        }
+      }
+
+      // Filter by User: if a user is selected, match that user, but don't filter out unassigned or generic records
+      if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
+        const targetUser = selectedUser.trim().toLowerCase()
+        const rowUser = (r.operatorName || '').trim().toLowerCase()
+        if (rowUser && rowUser !== 'floor operator' && rowUser !== targetUser) {
+          return false
+        }
+      }
+
+      // Filter by Date (clean day comparison)
+      if (selectedDate && r.date) {
+        const cleanRowDate = r.date.slice(0, 10)
+        const cleanFilterDate = selectedDate.slice(0, 10)
+        if (cleanRowDate && cleanFilterDate && cleanRowDate !== cleanFilterDate) {
+          return false
+        }
+      }
+
+      // Filter by Plan No
+      if (selectedPlanNo && r.planNo) {
+        if (r.planNo.trim().toLowerCase() !== selectedPlanNo.trim().toLowerCase()) {
+          return false
+        }
+      }
+
+      // Filter by Batch (flexible match e.g. B02 in B-02 or B02)
+      if (selectedBatchNo && r.batchNo) {
+        const cleanRow = r.batchNo.toLowerCase().replace(/[^a-z0-9]/g, '')
+        const cleanTarget = selectedBatchNo.toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (
+          cleanRow &&
+          cleanTarget &&
+          cleanRow !== cleanTarget &&
+          !cleanRow.includes(cleanTarget) &&
+          !cleanTarget.includes(cleanRow)
+        ) {
+          return false
+        }
+      }
+
+      // Filter by Project
+      if (selectedProject && r.productName) {
+        if (r.productName.trim().toLowerCase() !== selectedProject.trim().toLowerCase()) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [
+    serialRecords,
+    selectedPlanNo,
+    selectedBatchNo,
+    selectedProject,
+    selectedProcessStep,
+    selectedShift,
+    selectedUser,
+    selectedDate,
+  ])
+
+  // In View tab: show all completed records filtered dynamically by selections
+  const viewCompletedRecords = useMemo(() => {
+    const allCompleted: CompletedSerialRecord[] = []
+    const seen = new Set<string>()
+    const storedUpdates = getStoredSerialUpdates()
+
+    // 1. Completed serials from real database batches
+    batches.forEach((b) => {
+      (b.serials || []).forEach((s) => {
+        // Exclude if stored update says it is < 100%
+        const stored = storedUpdates[s.serialNumber]
+        if (stored && stored.completedPercent < 100) {
+          return
+        }
+
+        const statusUpper = String(s.status || '').toUpperCase()
+        const pct =
+          typeof s.completedPercent === 'number'
+            ? s.completedPercent
+            : statusUpper === 'COMPLETED'
+              ? 100
+              : 0
+        if (statusUpper === 'COMPLETED' || statusUpper === 'FULL_READY' || pct === 100) {
+          if (!seen.has(s.serialNumber)) {
+            seen.add(s.serialNumber)
+            const parentPlan = plans.find((p) => p.batchId === b.id || p.batchNo === b.batchNo)
+            allCompleted.push({
+              id: `${b.batchNo}-${s.serialNumber}`,
+              serialNumber: s.serialNumber,
+              batchNo: b.batchNo,
+              productName: b.productName || 'Compressor Blade Set',
+              productCode: 'TB-CB-003',
+              processName: b.processStepName || 'CNC',
+              processStepName: s.currentProcessStepName || b.processStepName || 'CNC Machining',
+              shift: s.shift || 'Shift B',
+              status: 'COMPLETED',
+              completedPercent: 100,
+              comments: s.comments || 'Completed in production',
+              orderId: b.orderId,
+              batchId: b.id,
+              completedAt: new Date().toISOString(),
+              completedBy: s.operatorName || b.productionInCharge || parentPlan?.operatorName,
+              planNo: parentPlan?.planNo,
+              date: parentPlan?.planDate?.slice(0, 10) || parentPlan?.startDate?.slice(0, 10),
+            })
+          }
+        }
+      })
+    })
+
+    // 2. Completed serials from session / local completed records
+    completedRecords.forEach((c) => {
+      // Exclude if stored update says it is < 100%
+      const stored = storedUpdates[c.serialNumber]
+      if (stored && stored.completedPercent < 100) {
+        return
+      }
+
+      if ((c.completedPercent ?? 0) < 100 && c.status !== 'COMPLETED') {
+        return
+      }
+
+      if (!seen.has(c.serialNumber)) {
+        seen.add(c.serialNumber)
+        allCompleted.push(c)
+      } else {
+        const idx = allCompleted.findIndex((item) => item.serialNumber === c.serialNumber)
+        if (idx >= 0) {
+          allCompleted[idx] = { ...allCompleted[idx], ...c }
+        }
+      }
+    })
+
+    // 3. Dynamic filter by selected fields in "Select Production Plan & Shift"
+    return allCompleted.filter((row) => {
+      // Must be 100%
+      if ((row.completedPercent ?? 0) < 100) return false
+
+      // Filter by Plan No
+      if (selectedPlanNo) {
+        const plan = plans.find((p) => p.planNo === selectedPlanNo)
+        const rowPlanMatch = row.planNo
+          ? row.planNo === selectedPlanNo
+          : plan && row.batchNo === plan.batchNo
+        if (!rowPlanMatch) return false
+      }
+
+      // Filter by Batch
+      if (selectedBatchNo) {
+        const cleanRow = (row.batchNo || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const cleanTarget = selectedBatchNo.toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (
+          cleanRow &&
+          cleanTarget &&
+          cleanRow !== cleanTarget &&
+          !cleanRow.includes(cleanTarget) &&
+          !cleanTarget.includes(cleanRow)
+        ) {
+          return false
+        }
+      }
+
+      // Filter by Project
+      if (selectedProject && row.productName && row.productName !== selectedProject) {
+        return false
+      }
+
+      // Filter by Process Step
+      if (selectedProcessStep) {
+        const rowStep = (row.processStepName || row.processName || '').toLowerCase()
+        const targetStep = selectedProcessStep.toLowerCase()
+        if (rowStep && !rowStep.includes(targetStep) && !targetStep.includes(rowStep)) {
+          return false
+        }
+      }
+
+      // Filter by Shift (clean prefix match)
+      if (selectedShift) {
+        const cleanFilter = selectedShift.split(' (')[0].trim().toUpperCase()
+        const cleanRow = (row.shift || '').split(' (')[0].trim().toUpperCase()
+        if (cleanFilter && cleanRow && cleanFilter !== cleanRow) {
+          return false
+        }
+      }
+
+      // Filter by User (strict match: only records by this user if user is selected)
+      if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
+        const targetUser = selectedUser.trim().toLowerCase()
+        const rowUser = (row.completedBy || row.operatorName || '').trim().toLowerCase()
+        if (rowUser && rowUser !== 'floor operator' && rowUser !== targetUser) {
+          return false
+        }
+      }
+
+      // Filter by Date
+      if (selectedDate) {
+        const completedDate = row.completedAt ? row.completedAt.slice(0, 10) : ''
+        const rowDate = (row.date ? row.date.slice(0, 10) : '') || completedDate
+        if (rowDate && rowDate !== selectedDate.slice(0, 10)) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [
+    batches,
+    completedRecords,
+    plans,
+    selectedPlanNo,
+    selectedBatchNo,
+    selectedProject,
+    selectedProcessStep,
+    selectedShift,
+    selectedUser,
+    selectedDate,
+  ])
+
+  // Tab 3: Tool Change - Filtered Dynamically by Selection
+  const filteredToolRecords = useMemo(() => {
+    return toolRecords.filter((record) => {
+      // Filter by Date
+      if (selectedDate && record.date && record.date !== selectedDate) return false
+
+      // Filter by Shift (clean prefix match)
+      if (selectedShift && record.shift) {
+        const cleanFilter = selectedShift.split(' (')[0].trim().toUpperCase()
+        const cleanRec = record.shift.split(' (')[0].trim().toUpperCase()
+        if (cleanFilter && cleanRec && cleanFilter !== cleanRec) return false
+      }
+
+      // Filter by User (only show this user's tool changes)
+      if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
+        const targetUser = selectedUser.trim().toLowerCase()
+        const recordUser = (record.operatorName || '').trim().toLowerCase()
+        if (recordUser && recordUser !== targetUser) return false
+      }
+
+      // Filter by Plan No
+      if (selectedPlanNo && record.planNo && record.planNo !== selectedPlanNo) {
+        return false
+      }
+
+      // Filter by Batch
+      if (selectedBatchNo && record.batchNo && record.batchNo !== selectedBatchNo) {
+        return false
+      }
+
+      // Filter by Machine Code
+      if (currentMachineCode && record.machineCode && record.machineCode !== currentMachineCode) {
+        return false
+      }
+
+      return true
+    })
+  }, [
+    toolRecords,
+    selectedDate,
+    selectedShift,
+    selectedUser,
+    selectedPlanNo,
+    selectedBatchNo,
+    currentMachineCode,
+  ])
+
+  // Tab 4: Break Down - Filtered Dynamically by Selection
+  const filteredBreakdownRecords = useMemo(() => {
+    return breakdownRecords.filter((record) => {
+      // Filter by Date
+      if (selectedDate && record.date && record.date !== selectedDate) return false
+
+      // Filter by Shift (clean prefix match)
+      if (selectedShift && record.shift) {
+        const cleanFilter = selectedShift.split(' (')[0].trim().toUpperCase()
+        const cleanRec = record.shift.split(' (')[0].trim().toUpperCase()
+        if (cleanFilter && cleanRec && cleanFilter !== cleanRec) return false
+      }
+
+      // Filter by User (only show this user's breakdowns)
+      if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
+        const targetUser = selectedUser.trim().toLowerCase()
+        const recordUser = (record.operatorName || '').trim().toLowerCase()
+        if (recordUser && recordUser !== targetUser) return false
+      }
+
+      // Filter by Plan No
+      if (selectedPlanNo && record.planNo && record.planNo !== selectedPlanNo) {
+        return false
+      }
+
+      // Filter by Batch
+      if (selectedBatchNo && record.batchNo && record.batchNo !== selectedBatchNo) {
+        return false
+      }
+
+      // Filter by Machine Code
+      if (currentMachineCode && record.machineCode && record.machineCode !== currentMachineCode) {
+        return false
+      }
+
+      return true
+    })
+  }, [
+    breakdownRecords,
+    selectedDate,
+    selectedShift,
+    selectedUser,
+    selectedPlanNo,
+    selectedBatchNo,
+    currentMachineCode,
+  ])
 
   // Toggle selection of a single row
   function handleToggleRow(id: string) {
@@ -406,13 +1400,109 @@ export function ProductionPlanning() {
     })
   }
 
-  // Toggle select all
+  // Toggle select all (Work Update tab)
   function handleToggleSelectAll() {
-    if (selectedSerialIds.size === serialRecords.length) {
+    if (selectedSerialIds.size === workUpdateRecords.length) {
       setSelectedSerialIds(new Set())
     } else {
-      setSelectedSerialIds(new Set(serialRecords.map((r) => r.id)))
+      setSelectedSerialIds(new Set(workUpdateRecords.map((r) => r.id)))
     }
+  }
+
+  // Handle Tool Change Submission
+  function handleSubmitToolChange() {
+    if (!selectedToolCode) {
+      setError('Please select an assigned tool.')
+      return
+    }
+    if (!toolStartTime || !toolEndTime) {
+      setError('Please provide both Start time and End time for tool usage.')
+      return
+    }
+    const toolObj =
+      ASSIGNED_TOOLS.find((t) => t.code === selectedToolCode) || ASSIGNED_TOOLS[0]
+    const dur = calculateDuration(toolStartTime, toolEndTime) || '0 mins'
+
+    const newRecord: ToolChangeRecord = {
+      id: `tc-${Date.now()}`,
+      toolCode: toolObj.code,
+      toolName: toolObj.name,
+      machineCode: currentMachineCode,
+      planNo: selectedPlanNo,
+      batchNo: selectedBatchNo,
+      processStepName: selectedProcessStep,
+      shift: selectedShift || 'Shift B',
+      date: selectedDate,
+      operatorName: selectedUser || 'Floor Operator',
+      startTime: toolStartTime,
+      endTime: toolEndTime,
+      duration: dur,
+      remarks: toolRemarks.trim() || 'Tool mounted & operational check OK',
+      status: 'COMPLETED',
+      loggedAt: `${selectedDate} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+    }
+
+    setToolRecords((prev) => {
+      const next = [newRecord, ...prev]
+      try {
+        localStorage.setItem('qms_tool_change_records', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+
+    setSelectedToolCode('')
+    setToolStartTime('')
+    setToolEndTime('')
+    setToolRemarks('')
+    setNotice(`Tool change logged for ${toolObj.code} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
+  }
+
+  // Handle Breakdown Submission
+  function handleSubmitBreakdown() {
+    if (!breakdownCategory) {
+      setError('Please select a machine issue category.')
+      return
+    }
+    if (!breakdownStartTime || !breakdownEndTime) {
+      setError('Please provide both Start time and End time for the breakdown.')
+      return
+    }
+    if (!breakdownReason.trim()) {
+      setError('Please provide a Reason describing the breakdown or stoppage.')
+      return
+    }
+    const dur = calculateDuration(breakdownStartTime, breakdownEndTime) || '0 mins'
+
+    const newRecord: BreakdownRecord = {
+      id: `bd-${Date.now()}`,
+      machineCode: currentMachineCode,
+      category: breakdownCategory,
+      planNo: selectedPlanNo,
+      batchNo: selectedBatchNo,
+      shift: selectedShift || 'Shift B',
+      date: selectedDate,
+      operatorName: selectedUser || 'Floor Operator',
+      startTime: breakdownStartTime,
+      endTime: breakdownEndTime,
+      duration: dur,
+      reason: breakdownReason.trim(),
+      status: 'RESOLVED',
+      loggedAt: `${selectedDate} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+    }
+
+    setBreakdownRecords((prev) => {
+      const next = [newRecord, ...prev]
+      try {
+        localStorage.setItem('qms_breakdown_records', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+
+    setBreakdownCategory('')
+    setBreakdownStartTime('')
+    setBreakdownEndTime('')
+    setBreakdownReason('')
+    setNotice(`Breakdown record logged for ${newRecord.machineCode} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
   }
 
   // Synchronize form when selected serials change
@@ -426,13 +1516,16 @@ export function ProductionPlanning() {
         // Note: Comments are left un-prefilled per user request
       }
     } else if (selectedSerialIds.size > 1) {
-      const firstId = Array.from(selectedSerialIds)[0]
-      const item = serialRecords.find((r) => r.id === firstId)
-      if (item) {
-        setFormStatus(item.status)
+      const selectedItems = serialRecords.filter((r) => selectedSerialIds.has(r.id))
+      const firstItem = selectedItems[0]
+      if (firstItem) {
+        const hasInProgress = selectedItems.some((item) => item.status === 'IN_PROGRESS')
+        setFormStatus(hasInProgress ? 'IN_PROGRESS' : firstItem.status)
+        const maxPercent = Math.max(...selectedItems.map((item) => item.completedPercent || 0))
+        setFormCompletedPercent(maxPercent > 0 ? maxPercent : 0)
       }
     }
-  }, [selectedSerialIds])
+  }, [selectedSerialIds, serialRecords])
 
   // Apply Update to Selected Serial Records
   function handleApplyUpdate() {
@@ -442,11 +1535,19 @@ export function ProductionPlanning() {
       formStatus === 'COMPLETED'
         ? 100
         : Math.min(100, Math.max(0, Number(formCompletedPercent) || 0))
-    const updatedStatus = formStatus
+
+    // Auto-align status with completion percentage
+    let updatedStatus = formStatus
+    if (updatedPercent === 100) {
+      updatedStatus = 'COMPLETED'
+    } else if (updatedPercent > 0 && (updatedStatus === 'PLANNED' || updatedStatus === 'QUEUED')) {
+      updatedStatus = 'IN_PROGRESS'
+    }
+
     const updatedComments = formComments.trim()
     const selectedCount = selectedSerialIds.size
 
-    if (formStatus === 'COMPLETED') {
+    if (updatedStatus === 'COMPLETED') {
       // 1. Extract selected records to store in completed collection/table
       const itemsToComplete = serialRecords.filter((r) => selectedSerialIds.has(r.id))
       const completedEntries: CompletedSerialRecord[] = itemsToComplete.map((item) => ({
@@ -455,7 +1556,13 @@ export function ProductionPlanning() {
         completedPercent: 100,
         comments: updatedComments || item.comments || 'Completed shift work',
         completedAt: new Date().toISOString(),
+        completedBy: selectedUser || undefined,
       }))
+
+      // Remove from qms_serial_updates
+      itemsToComplete.forEach((item) => {
+        removeStoredSerialUpdate(item.serialNumber)
+      })
 
       // 2. Store in completed collection/table (state + localStorage)
       setCompletedRecords((prev) => {
@@ -496,14 +1603,48 @@ export function ProductionPlanning() {
         `Successfully marked ${selectedCount} serial(s) as Completed and stored in completed collection!`,
       )
     } else {
-      // Regular in-progress / status update without removing from table
+      // Regular in-progress / status update (< 100%):
+      // STRICT OVERRIDE: Both records are overridden with the current progress value (updatedPercent)
+      const selectedItems = serialRecords.filter((r) => selectedSerialIds.has(r.id))
+
+      // 1. Save all updated records into localStorage['qms_serial_updates'] so they persist across reloads
+      selectedItems.forEach((item) => {
+        saveStoredSerialUpdate({
+          serialNumber: item.serialNumber,
+          completedPercent: updatedPercent,
+          status: updatedStatus,
+          comments: updatedComments || item.comments,
+          shift: selectedShift || item.shift,
+          operatorName: selectedUser || item.operatorName,
+          planNo: item.planNo || selectedPlanNo,
+          batchNo: item.batchNo || selectedBatchNo,
+          productName: item.productName || selectedProject,
+          processStepName: item.processStepName || selectedProcessStep,
+          date: item.date || selectedDate,
+          orderId: item.orderId,
+          batchId: item.batchId,
+          updatedAt: new Date().toISOString(),
+        })
+      })
+
+      // 2. Remove any of these selected records from completedRecords if they were ever there
+      const selectedNumbers = new Set(selectedItems.map((r) => r.serialNumber))
+      setCompletedRecords((prev) => {
+        const cleaned = prev.filter((c) => !selectedNumbers.has(c.serialNumber))
+        try {
+          localStorage.setItem('qms_completed_serial_records', JSON.stringify(cleaned))
+        } catch {}
+        return cleaned
+      })
+
+      // 3. Update active serial records in state
       setSerialRecords((prev) =>
         prev.map((item) => {
           if (selectedSerialIds.has(item.id)) {
             return {
               ...item,
-              completedPercent: updatedPercent,
-              status: updatedStatus,
+              completedPercent: updatedPercent, // Overrides prior progress (e.g. 30% -> 50%)
+              status: updatedStatus,           // Overrides status (e.g. IN_PROGRESS)
               comments: updatedComments || item.comments,
             }
           }
@@ -511,19 +1652,36 @@ export function ProductionPlanning() {
         }),
       )
 
-      // Background sync with backend if orderId & batchId are available
-      const sample = serialRecords.find((r) => selectedSerialIds.has(r.id))
+      // 4. Also sync into batches in memory
+      setBatches((prevBatches) =>
+        prevBatches.map((b) => {
+          if (!b.serials || b.serials.length === 0) return b
+          const updatedSerials = b.serials.map((s) => {
+            const matchRecord = selectedItems.find((r) => r.serialNumber === s.serialNumber)
+            if (matchRecord) {
+              return {
+                ...s,
+                status: updatedStatus,
+                completedPercent: updatedPercent,
+                comments: updatedComments || s.comments,
+              }
+            }
+            return s
+          })
+          return { ...b, serials: updatedSerials }
+        }),
+      )
+
+      // 5. Background sync with backend if orderId & batchId are available
+      const sample = selectedItems[0]
       if (sample?.batchId && sample?.orderId) {
-        const updates = Array.from(selectedSerialIds).map((id) => {
-          const r = serialRecords.find((rec) => rec.id === id)
-          return {
-            serialNumber: r?.serialNumber || '',
-            status: updatedStatus,
-            completedPercent: updatedPercent,
-            comments: updatedComments,
-            currentProcessStepName: r?.processStepName,
-          }
-        })
+        const updates = selectedItems.map((r) => ({
+          serialNumber: r.serialNumber,
+          status: updatedStatus,
+          completedPercent: updatedPercent,
+          comments: updatedComments || r.comments,
+          currentProcessStepName: r.processStepName,
+        }))
         updateBatchSerialsApi(sample.orderId, sample.batchId, {
           shift: selectedShift,
           updates,
@@ -532,10 +1690,11 @@ export function ProductionPlanning() {
         })
       }
 
-      // Clear comments after applying update
+      // 6. Clear selections and comments after applying update so table displays updated rows cleanly
+      setSelectedSerialIds(new Set())
       setFormComments('')
       setNotice(
-        `Successfully updated ${selectedCount} serial record(s) to ${updatedPercent}% (${updatedStatus.replace(/_/g, ' ')})!`,
+        `Successfully updated ${selectedCount} serial record(s) to ${updatedPercent}% (${updatedStatus.replace(/_/g, ' ')})! Previous progress overridden with current value (${updatedPercent}%).`,
       )
     }
   }
@@ -549,7 +1708,7 @@ export function ProductionPlanning() {
   }, [notice])
 
   const isAllSelected =
-    serialRecords.length > 0 && selectedSerialIds.size === serialRecords.length
+    workUpdateRecords.length > 0 && selectedSerialIds.size === workUpdateRecords.length
 
   return (
     <div className="space-y-4">
@@ -601,7 +1760,56 @@ export function ProductionPlanning() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {/* 1. Plan No */}
+                {/* 1. Date (Default current date) */}
+                <div>
+                  <label
+                    htmlFor="dateInput"
+                    className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                  >
+                    Date
+                  </label>
+                  <input
+                    id="dateInput"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      setSelectedDate(e.target.value)
+                      try {
+                        localStorage.setItem('qms_selected_date', e.target.value)
+                      } catch {}
+                    }}
+                    className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                  />
+                </div>
+
+                {/* 2. Shift */}
+                <div>
+                  <label
+                    htmlFor="shiftSelect"
+                    className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                  >
+                    Shift
+                  </label>
+                  <select
+                    id="shiftSelect"
+                    value={selectedShift}
+                    onChange={(e) => {
+                      setSelectedShift(e.target.value)
+                      try {
+                        localStorage.setItem('qms_selected_shift', e.target.value)
+                      } catch {}
+                    }}
+                    className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                  >
+                    {shiftOptions.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Plan No */}
                 <div>
                   <label
                     htmlFor="planNoSelect"
@@ -627,7 +1835,7 @@ export function ProductionPlanning() {
                   </select>
                 </div>
 
-                {/* 2. Batch */}
+                {/* 4. Batch */}
                 <div>
                   <label
                     htmlFor="batchSelect"
@@ -653,7 +1861,7 @@ export function ProductionPlanning() {
                   </select>
                 </div>
 
-                {/* 3. Project */}
+                {/* 5. Project */}
                 <div>
                   <label
                     htmlFor="projectSelect"
@@ -664,7 +1872,12 @@ export function ProductionPlanning() {
                   <select
                     id="projectSelect"
                     value={selectedProject}
-                    onChange={(e) => setSelectedProject(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedProject(e.target.value)
+                      try {
+                        localStorage.setItem('qms_selected_project', e.target.value)
+                      } catch {}
+                    }}
                     className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
                   >
                     {projectOptions.length === 0 ? (
@@ -679,7 +1892,7 @@ export function ProductionPlanning() {
                   </select>
                 </div>
 
-                {/* 4. Process step */}
+                {/* 6. Process step */}
                 <div>
                   <label
                     htmlFor="stepSelect"
@@ -690,7 +1903,12 @@ export function ProductionPlanning() {
                   <select
                     id="stepSelect"
                     value={selectedProcessStep}
-                    onChange={(e) => setSelectedProcessStep(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedProcessStep(e.target.value)
+                      try {
+                        localStorage.setItem('qms_selected_process_step', e.target.value)
+                      } catch {}
+                    }}
                     className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
                   >
                     {processStepOptions.length === 0 ? (
@@ -705,260 +1923,658 @@ export function ProductionPlanning() {
                   </select>
                 </div>
 
-                {/* 5. Shift & Get Details Button */}
-                <div className="sm:col-span-2">
-                  <label
-                    htmlFor="shiftSelect"
-                    className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
-                  >
-                    Shift
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <select
-                      id="shiftSelect"
-                      value={selectedShift}
-                      onChange={(e) => setSelectedShift(e.target.value)}
-                      className="h-8 flex-1 rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
-                    >
-                      {shiftOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                {/* 7. Users (Searchable Single Select Dropdown) */}
+                <div>
+                  <SearchableSelect
+                    id="userSelect"
+                    label="Users"
+                    size="xs"
+                    placeholder="All Users / Search user..."
+                    allowClear
+                    options={userSelectOptions}
+                    value={selectedUser}
+                    onChange={(val) => {
+                      setSelectedUser(val)
+                      try {
+                        localStorage.setItem('qms_selected_user', val)
+                      } catch {}
+                    }}
+                  />
+                </div>
 
-                    <button
-                      type="button"
-                      onClick={handleGetDetails}
-                      disabled={fetchingDetails}
-                      className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 text-xs font-bold text-white shadow-sm hover:bg-accent/90 transition disabled:opacity-50"
-                    >
-                      <Search className={`h-3 w-3 ${fetchingDetails ? 'animate-spin' : ''}`} />
-                      <span>Get Details</span>
-                    </button>
+                {/* 8. Get Details Action Button */}
+                <div>
+                  <div className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-transparent select-none">
+                    Action
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleGetDetails}
+                    disabled={fetchingDetails}
+                    className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-4 text-xs font-bold text-white shadow-sm hover:bg-accent/90 transition disabled:opacity-50"
+                  >
+                    <Search className={`h-3 w-3 ${fetchingDetails ? 'animate-spin' : ''}`} />
+                    <span>Get Details</span>
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Column: % of completion, status dropdown, comments (Visible when >= 1 serial selected) */}
+          {/* Right Column: Dynamic Form based on Active Tab */}
           <div className="lg:col-span-5 flex flex-col justify-center">
-            {selectedSerialIds.size > 0 ? (
+            {activeTab === 'WORK_UPDATE' ? (
+              selectedSerialIds.size > 0 ? (
+                <div className="flex h-full flex-col justify-between rounded-xl border border-accent/30 bg-accent/[0.04] p-3.5 shadow-sm">
+                  <div>
+                    <div className="flex items-center justify-between border-b border-border/80 pb-2 mb-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
+                        <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">
+                          Update Progress
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
+                          {selectedSerialIds.size} Selected
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSerialIds(new Set())}
+                          className="text-[10px] font-semibold text-muted hover:text-foreground"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {/* % of completion as a Textbox instead of option buttons */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label
+                            htmlFor="updatePercentInput"
+                            className="text-[10px] font-bold uppercase tracking-wider text-muted"
+                          >
+                            % of Completion
+                          </label>
+                          <span className="font-mono text-[11px] font-extrabold text-accent">
+                            {formCompletedPercent}%
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <input
+                            id="updatePercentInput"
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            placeholder="Enter % completion (0 - 100)"
+                            value={formCompletedPercent}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              if (raw === '') {
+                                setFormCompletedPercent(0)
+                                setFormStatus('PLANNED')
+                                return
+                              }
+                              const val = Math.min(100, Math.max(0, Number(raw) || 0))
+                              setFormCompletedPercent(val)
+                              if (val === 100) {
+                                setFormStatus('COMPLETED')
+                              } else if (val > 0) {
+                                setFormStatus('IN_PROGRESS')
+                              } else {
+                                setFormStatus('PLANNED')
+                              }
+                            }}
+                            className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 pr-7 text-xs font-bold text-foreground outline-none transition focus:border-accent"
+                          />
+                          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
+                            %
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* status dropdown */}
+                      <div>
+                        <label
+                          htmlFor="updateStatusSelect"
+                          className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                        >
+                          Status
+                        </label>
+                        <select
+                          id="updateStatusSelect"
+                          value={formStatus}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setFormStatus(val)
+                            if (val === 'COMPLETED') {
+                              setFormCompletedPercent(100)
+                            } else if (val === 'PLANNED') {
+                              setFormCompletedPercent(0)
+                            } else if (val === 'IN_PROGRESS' && formCompletedPercent === 0) {
+                              setFormCompletedPercent(50)
+                            }
+                          }}
+                          className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                        >
+                          <option value="PLANNED">Planned</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="COMPLETED">Completed</option>
+                          <option value="ON_HOLD">On Hold</option>
+                          <option value="QC_REJECTED">QC Rejected</option>
+                        </select>
+                      </div>
+
+                      {/* comments */}
+                      <div>
+                        <label
+                          htmlFor="updateCommentsInput"
+                          className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                        >
+                          Comments
+                        </label>
+                        <textarea
+                          id="updateCommentsInput"
+                          rows={2}
+                          value={formComments}
+                          onChange={(e) => setFormComments(e.target.value)}
+                          placeholder="Add shift progress or handover notes..."
+                          className="w-full rounded-lg border border-border bg-surface-muted p-2 text-xs text-foreground outline-none transition focus:border-accent resize-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-border/80 mt-2.5 space-y-1.5">
+                    {selectedSerialIds.size > 1 && (
+                      <p className="text-[10px] text-accent font-semibold text-center">
+                        Overrides progress to {formCompletedPercent}% for both selected serials
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleApplyUpdate}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent py-2 text-xs font-bold text-white shadow-sm hover:bg-accent/90 transition"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>
+                        Apply Update ({selectedSerialIds.size} Serials → {formCompletedPercent}%)
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-full min-h-[190px] flex-col items-center justify-center rounded-xl border border-dashed border-border/90 bg-surface-muted/20 p-5 text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-muted text-muted mb-2">
+                    <CheckSquare className="h-4 w-4 text-muted" />
+                  </div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                    Update Serial Progress
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted max-w-xs leading-relaxed">
+                    Select one or more serial number records from the table below using the checkboxes
+                    to update their <span className="font-semibold text-foreground">% of completion</span>,{' '}
+                    <span className="font-semibold text-foreground">status dropdown</span>, and{' '}
+                    <span className="font-semibold text-foreground">comments</span>.
+                  </p>
+                </div>
+              )
+            ) : activeTab === 'VIEW' ? (
+              <div className="flex h-full flex-col justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/[0.04] p-3.5 shadow-sm">
+                <div>
+                  <div className="flex items-center justify-between border-b border-border/80 pb-2 mb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-emerald-600" />
+                      <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">
+                        Completed Records Summary
+                      </span>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                      {viewCompletedRecords.length} Archived
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="rounded-lg bg-surface-muted/60 p-2.5 border border-border">
+                      <div className="text-[10px] uppercase font-bold text-muted">Archive Mode</div>
+                      <div className="mt-0.5 flex items-center justify-between">
+                        <span className="text-xs font-bold text-foreground">Completed Serials</span>
+                        <span className="text-xs font-mono font-bold text-emerald-600">100% Finalized</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted leading-tight">
+                        Viewing all completed and finalized items. These records are strictly read-only with no edit or delete actions.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-surface-muted/40 p-2 border border-border">
+                        <span className="text-[10px] text-muted block uppercase font-bold">Current Shift</span>
+                        <span className="font-semibold text-foreground truncate block">
+                          {selectedShift.split(' (')[0] || 'Shift B'}
+                        </span>
+                      </div>
+                      <div className="rounded-lg bg-surface-muted/40 p-2 border border-border">
+                        <span className="text-[10px] text-muted block uppercase font-bold">Active Batch</span>
+                        <span className="font-semibold text-foreground truncate block">
+                          {selectedBatchNo || 'B01'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border/80 mt-2 text-center text-[10px] font-semibold text-muted">
+                  Read-Only View • No edit/delete actions available
+                </div>
+              </div>
+            ) : activeTab === 'TOOL_CHANGE' ? (
               <div className="flex h-full flex-col justify-between rounded-xl border border-accent/30 bg-accent/[0.04] p-3.5 shadow-sm">
                 <div>
                   <div className="flex items-center justify-between border-b border-border/80 pb-2 mb-2.5">
                     <div className="flex items-center gap-1.5">
-                      <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
+                      <Wrench className="h-3.5 w-3.5 text-accent" />
                       <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">
-                        Update Progress
+                        Log Tool Change & Usage
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
-                        {selectedSerialIds.size} Selected
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSerialIds(new Set())}
-                        className="text-[10px] font-semibold text-muted hover:text-foreground"
-                      >
-                        Clear
-                      </button>
-                    </div>
+                    <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
+                      {filteredToolRecords.length} Logged
+                    </span>
                   </div>
 
-                  <div className="space-y-2.5">
-                    {/* % of completion as a Textbox instead of option buttons */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label
-                          htmlFor="updatePercentInput"
-                          className="text-[10px] font-bold uppercase tracking-wider text-muted"
-                        >
-                          % of Completion
-                        </label>
-                        <span className="font-mono text-[11px] font-extrabold text-accent">
-                          {formCompletedPercent}%
-                        </span>
-                      </div>
-                      <div className="relative">
-                        <input
-                          id="updatePercentInput"
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={1}
-                          placeholder="Enter % completion (0 - 100)"
-                          value={formCompletedPercent}
-                          onChange={(e) => {
-                            const val = Math.min(100, Math.max(0, Number(e.target.value) || 0))
-                            setFormCompletedPercent(val)
-                            if (val === 100) {
-                              setFormStatus('COMPLETED')
-                            }
-                          }}
-                          className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 pr-7 text-xs font-bold text-foreground outline-none transition focus:border-accent"
-                        />
-                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
-                          %
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* status dropdown */}
+                  <div className="space-y-2">
+                    {/* Tool selection */}
                     <div>
                       <label
-                        htmlFor="updateStatusSelect"
+                        htmlFor="toolSelect"
                         className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
                       >
-                        Status
+                        Assigned Tool *
                       </label>
                       <select
-                        id="updateStatusSelect"
-                        value={formStatus}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setFormStatus(val)
-                          if (val === 'COMPLETED') {
-                            setFormCompletedPercent(100)
-                          }
-                        }}
+                        id="toolSelect"
+                        value={selectedToolCode}
+                        onChange={(e) => setSelectedToolCode(e.target.value)}
                         className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
                       >
-                        <option value="PLANNED">Planned</option>
-                        <option value="IN_PROGRESS">In Progress</option>
-                        <option value="COMPLETED">Completed</option>
-                        <option value="ON_HOLD">On Hold</option>
-                        <option value="QC_REJECTED">QC Rejected</option>
+                        <option value="">Select Assigned Tool...</option>
+                        {ASSIGNED_TOOLS.map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.code} — {t.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
-                    {/* comments */}
+                    {/* Start Time & End Time */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label
+                          htmlFor="toolStartTimeInput"
+                          className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                        >
+                          Start Time *
+                        </label>
+                        <input
+                          id="toolStartTimeInput"
+                          type="time"
+                          value={toolStartTime}
+                          onChange={(e) => setToolStartTime(e.target.value)}
+                          className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="toolEndTimeInput"
+                          className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                        >
+                          End Time *
+                        </label>
+                        <input
+                          id="toolEndTimeInput"
+                          type="time"
+                          value={toolEndTime}
+                          onChange={(e) => setToolEndTime(e.target.value)}
+                          className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Duration textbox (auto filled, non editable) */}
                     <div>
                       <label
-                        htmlFor="updateCommentsInput"
+                        htmlFor="toolDurationInput"
                         className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
                       >
-                        Comments
+                        Duration (Auto-calculated, non-editable)
+                      </label>
+                      <input
+                        id="toolDurationInput"
+                        type="text"
+                        readOnly
+                        disabled
+                        value={toolDuration}
+                        placeholder="Auto-calculated from Start and End time"
+                        className="h-8 w-full cursor-not-allowed rounded-lg border border-border/80 bg-surface-muted/70 px-2.5 text-xs font-bold text-accent outline-none"
+                      />
+                    </div>
+
+                    {/* Remarks */}
+                    <div>
+                      <label
+                        htmlFor="toolRemarksInput"
+                        className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                      >
+                        Notes / Tool Condition
+                      </label>
+                      <input
+                        id="toolRemarksInput"
+                        type="text"
+                        value={toolRemarks}
+                        onChange={(e) => setToolRemarks(e.target.value)}
+                        placeholder="e.g. Edge wear observed, replaced insert..."
+                        className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs text-foreground outline-none transition focus:border-accent"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border/80 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleSubmitToolChange}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent py-2 text-xs font-bold text-white shadow-sm hover:bg-accent/90 transition"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Submit Tool Usage</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* BREAKDOWN TAB */
+              <div className="flex h-full flex-col justify-between rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-3.5 shadow-sm">
+                <div>
+                  <div className="flex items-center justify-between border-b border-border/80 pb-2 mb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                      <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">
+                        Log Machine Breakdown
+                      </span>
+                    </div>
+                    <span className="rounded-full bg-amber-100 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      {filteredBreakdownRecords.length} Logged
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {/* Machine & Category */}
+                    <div>
+                      <label
+                        htmlFor="breakdownCategorySelect"
+                        className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                      >
+                        Machine & Issue Category *
+                      </label>
+                      <select
+                        id="breakdownCategorySelect"
+                        value={breakdownCategory}
+                        onChange={(e) => setBreakdownCategory(e.target.value)}
+                        className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                      >
+                        <option value="">Select Machine Issue Category...</option>
+                        {BREAKDOWN_CATEGORIES.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {currentMachineCode} — {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Start Time & End Time */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label
+                          htmlFor="breakdownStartTimeInput"
+                          className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                        >
+                          Start Time *
+                        </label>
+                        <input
+                          id="breakdownStartTimeInput"
+                          type="time"
+                          value={breakdownStartTime}
+                          onChange={(e) => setBreakdownStartTime(e.target.value)}
+                          className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="breakdownEndTimeInput"
+                          className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                        >
+                          End Time *
+                        </label>
+                        <input
+                          id="breakdownEndTimeInput"
+                          type="time"
+                          value={breakdownEndTime}
+                          onChange={(e) => setBreakdownEndTime(e.target.value)}
+                          className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Duration textbox (auto filled, non editable) */}
+                    <div>
+                      <label
+                        htmlFor="breakdownDurationInput"
+                        className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                      >
+                        Duration (Auto-calculated, non-editable)
+                      </label>
+                      <input
+                        id="breakdownDurationInput"
+                        type="text"
+                        readOnly
+                        disabled
+                        value={breakdownDuration}
+                        placeholder="Auto-calculated from Start and End time"
+                        className="h-8 w-full cursor-not-allowed rounded-lg border border-border/80 bg-surface-muted/70 px-2.5 text-xs font-bold text-amber-700 outline-none"
+                      />
+                    </div>
+
+                    {/* Reason (Text area) */}
+                    <div>
+                      <label
+                        htmlFor="breakdownReasonInput"
+                        className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted"
+                      >
+                        Reason * (Text area)
                       </label>
                       <textarea
-                        id="updateCommentsInput"
+                        id="breakdownReasonInput"
                         rows={2}
-                        value={formComments}
-                        onChange={(e) => setFormComments(e.target.value)}
-                        placeholder="Add shift progress or handover notes..."
+                        value={breakdownReason}
+                        onChange={(e) => setBreakdownReason(e.target.value)}
+                        placeholder="Describe root cause, alarm code, or action taken..."
                         className="w-full rounded-lg border border-border bg-surface-muted p-2 text-xs text-foreground outline-none transition focus:border-accent resize-none"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-2.5 border-t border-border/80 mt-2.5">
+                <div className="pt-2 border-t border-border/80 mt-2">
                   <button
                     type="button"
-                    onClick={handleApplyUpdate}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent py-2 text-xs font-bold text-white shadow-sm hover:bg-accent/90 transition"
+                    onClick={handleSubmitBreakdown}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2 text-xs font-bold text-white shadow-sm hover:bg-amber-700 transition"
                   >
                     <Check className="h-3.5 w-3.5" />
-                    <span>Apply Update ({selectedSerialIds.size} Serials)</span>
+                    <span>Submit Breakdown</span>
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div className="flex h-full min-h-[190px] flex-col items-center justify-center rounded-xl border border-dashed border-border/90 bg-surface-muted/20 p-5 text-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-muted text-muted mb-2">
-                  <CheckSquare className="h-4 w-4 text-muted" />
-                </div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">
-                  Update Serial Progress
-                </p>
-                <p className="mt-1 text-[11px] text-muted max-w-xs leading-relaxed">
-                  Select one or more serial number records from the table below using the checkboxes
-                  to update their <span className="font-semibold text-foreground">% of completion</span>,{' '}
-                  <span className="font-semibold text-foreground">status dropdown</span>, and{' '}
-                  <span className="font-semibold text-foreground">comments</span>.
-                </p>
               </div>
             )}
           </div>
         </div>
+
+        {/* 4 Tabs: View, Work Update, Tool Change and Break Down */}
+        <div className="mt-3.5 pt-3 border-t border-border flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-surface-muted border border-border">
+            {/* Tab 1: View */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('VIEW')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'VIEW'
+                  ? 'bg-surface text-accent shadow-sm'
+                  : 'text-muted hover:text-foreground hover:bg-surface/50'
+              }`}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              <span>View</span>
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === 'VIEW'
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-surface-muted text-muted'
+                }`}
+              >
+                {viewCompletedRecords.length}
+              </span>
+            </button>
+
+            {/* Tab 2: Work Update */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('WORK_UPDATE')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'WORK_UPDATE'
+                  ? 'bg-surface text-accent shadow-sm'
+                  : 'text-muted hover:text-foreground hover:bg-surface/50'
+              }`}
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              <span>Work Update</span>
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === 'WORK_UPDATE'
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-surface-muted text-muted'
+                }`}
+              >
+                {workUpdateRecords.length}
+              </span>
+            </button>
+
+            {/* Tab 3: Tool Change */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('TOOL_CHANGE')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'TOOL_CHANGE'
+                  ? 'bg-surface text-accent shadow-sm'
+                  : 'text-muted hover:text-foreground hover:bg-surface/50'
+              }`}
+            >
+              <Wrench className="h-3.5 w-3.5" />
+              <span>Tool Change</span>
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === 'TOOL_CHANGE'
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-surface-muted text-muted'
+                }`}
+              >
+                {filteredToolRecords.length}
+              </span>
+            </button>
+
+            {/* Tab 4: Break Down */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('BREAKDOWN')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'BREAKDOWN'
+                  ? 'bg-surface text-accent shadow-sm'
+                  : 'text-muted hover:text-foreground hover:bg-surface/50'
+              }`}
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span>Break Down</span>
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === 'BREAKDOWN'
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-surface-muted text-muted'
+                }`}
+              >
+                {filteredBreakdownRecords.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="text-[11px] font-medium text-muted hidden sm:block">
+            {activeTab === 'VIEW' && 'Viewing completed & archived shift records (Read-Only)'}
+            {activeTab === 'WORK_UPDATE' && 'Select serials from the table to log progress and status updates'}
+            {activeTab === 'TOOL_CHANGE' && 'Log tool mounting, cutting duration and wear observations'}
+            {activeTab === 'BREAKDOWN' && 'Log unexpected stoppages, reason and resolution duration'}
+          </div>
+        </div>
       </section>
 
-      {/* Main Table: Checkbox, Serails Number, ProcessName, Status */}
+      {/* Main Tab Content Tables */}
       <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-xs">
-            <thead className="border-b border-border bg-surface-muted/60 text-[10px] font-bold uppercase tracking-wider text-muted">
-              <tr>
-                <th className="w-10 px-3 py-2.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={isAllSelected}
-                    onChange={handleToggleSelectAll}
-                    aria-label="Select all serials"
-                    className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent"
-                  />
-                </th>
-                <th className="px-3 py-2.5">Serails Number</th>
-                <th className="px-3 py-2.5">ProcessName</th>
-                <th className="px-3 py-2.5 text-center">Status</th>
-                <th className="px-3 py-2.5 text-center">% Completion</th>
-                <th className="px-3 py-2.5">Comments</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="py-10 text-center text-muted">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <RefreshCw className="h-5 w-5 animate-spin text-accent" />
-                      <span className="text-xs">Loading shift records...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : serialRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-muted">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Layers className="h-7 w-7 text-muted/50" />
-                      <p className="text-sm font-semibold text-foreground">
-                        No serial records found
-                      </p>
-                      <p className="text-xs text-muted">
-                        Select a Plan No, Batch, or Project and click <strong>Get Details</strong>.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                serialRecords.map((row) => {
-                  const isSelected = selectedSerialIds.has(row.id)
+        {/* TAB 1: VIEW (Read-Only Completed Records) */}
+        {activeTab === 'VIEW' && (
+          <div className="overflow-x-auto">
+            <div className="border-b border-border/80 px-4 py-2.5 bg-surface-muted/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-emerald-600" />
+                <span className="text-xs font-bold text-foreground">Completed Records Archive</span>
+                <span className="rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5">
+                  {viewCompletedRecords.length} Records
+                </span>
+              </div>
+              <span className="text-[10px] text-muted font-medium">
+                Read-only archive of completed shift work
+              </span>
+            </div>
 
-                  return (
-                    <tr
-                      key={row.id}
-                      onClick={() => handleToggleRow(row.id)}
-                      className={`cursor-pointer transition ${
-                        isSelected
-                          ? 'bg-accent/10 hover:bg-accent/15'
-                          : 'hover:bg-surface-muted/40'
-                      }`}
-                    >
-                      {/* Checkbox */}
-                      <td
-                        className="w-10 px-3 py-2 text-center"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleRow(row.id)}
-                          aria-label={`Select ${row.serialNumber}`}
-                          className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent"
-                        />
-                      </td>
-
+            <table className="min-w-full text-left text-xs">
+              <thead className="border-b border-border bg-surface-muted/60 text-[10px] font-bold uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="px-3 py-2.5">Serails Number</th>
+                  <th className="px-3 py-2.5">Batch & Product</th>
+                  <th className="px-3 py-2.5">ProcessName</th>
+                  <th className="px-3 py-2.5">Shift</th>
+                  <th className="px-3 py-2.5 text-center">Status</th>
+                  <th className="px-3 py-2.5 text-center">% Completion</th>
+                  <th className="px-3 py-2.5">Comments</th>
+                  <th className="px-3 py-2.5">Completed At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {viewCompletedRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Eye className="h-7 w-7 text-muted/50" />
+                        <p className="text-sm font-semibold text-foreground">
+                          No completed records yet
+                        </p>
+                        <p className="text-xs text-muted max-w-sm">
+                          When you select serial numbers in the <strong>Work Update</strong> tab, set their status to Completed, and apply update, they will be archived here.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  viewCompletedRecords.map((row) => (
+                    <tr key={row.id} className="transition hover:bg-surface-muted/30">
                       {/* Serails Number */}
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className="font-mono text-xs font-bold text-accent">
@@ -966,55 +2582,428 @@ export function ProductionPlanning() {
                         </span>
                       </td>
 
+                      {/* Batch & Product */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <div className="font-semibold text-foreground">{row.batchNo}</div>
+                        <div className="text-[11px] text-muted">{row.productName}</div>
+                      </td>
+
                       {/* ProcessName */}
                       <td className="px-3 py-2 whitespace-nowrap text-xs font-semibold text-foreground">
                         {row.processName || row.processStepName}
                       </td>
 
+                      {/* Shift */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-foreground">
+                        {row.shift}
+                      </td>
+
                       {/* Status */}
                       <td className="px-3 py-2 text-center whitespace-nowrap">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeClass(
-                            row.status,
-                          )}`}
-                        >
-                          {row.status.replace(/_/g, ' ')}
+                        <span className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          COMPLETED
                         </span>
                       </td>
 
                       {/* % Completion */}
                       <td className="px-3 py-2 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center gap-0.5">
-                          <span className="font-mono text-[11px] font-bold text-foreground">
-                            {row.completedPercent}%
+                          <span className="font-mono text-[11px] font-bold text-emerald-600">
+                            100%
                           </span>
                           <div className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-muted">
-                            <div
-                              className="h-full bg-accent transition-all duration-300"
-                              style={{
-                                width: `${Math.min(100, Math.max(0, row.completedPercent))}%`,
-                              }}
-                            />
+                            <div className="h-full bg-emerald-500 w-full" />
                           </div>
                         </div>
                       </td>
 
                       {/* Comments */}
                       <td className="px-3 py-2 max-w-[260px]">
-                        <span
-                          className="truncate block text-xs text-muted"
-                          title={row.comments}
-                        >
-                          {row.comments || '—'}
+                        <span className="truncate block text-xs text-muted" title={row.comments}>
+                          {row.comments || 'Shift work completed'}
                         </span>
                       </td>
+
+                      {/* Completed At */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-muted font-mono">
+                        <div>{row.completedAt ? new Date(row.completedAt).toLocaleString() : 'Recent'}</div>
+                        {row.completedBy && (
+                          <div className="text-[10px] text-accent font-sans font-medium">By: {row.completedBy}</div>
+                        )}
+                      </td>
                     </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* TAB 2: WORK UPDATE (Queued & In-Progress Serial Records with Actions) */}
+        {activeTab === 'WORK_UPDATE' && (
+          <div className="overflow-x-auto">
+            <div className="border-b border-border/80 px-4 py-2.5 bg-surface-muted/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="h-4 w-4 text-accent" />
+                <span className="text-xs font-bold text-foreground">Work Update: Queued & In-Progress Serials</span>
+                <span className="rounded-full bg-accent/15 text-accent text-[10px] font-bold px-2 py-0.5">
+                  {workUpdateRecords.length} Serials
+                </span>
+              </div>
+              <span className="text-[10px] text-muted font-medium">
+                Select records to update % completion, status, and handover notes
+              </span>
+            </div>
+
+            <table className="min-w-full text-left text-xs">
+              <thead className="border-b border-border bg-surface-muted/60 text-[10px] font-bold uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="w-10 px-3 py-2.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={handleToggleSelectAll}
+                      aria-label="Select all serials"
+                      className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent"
+                    />
+                  </th>
+                  <th className="px-3 py-2.5">Serails Number</th>
+                  <th className="px-3 py-2.5">ProcessName</th>
+                  <th className="px-3 py-2.5 text-center">Status</th>
+                  <th className="px-3 py-2.5 text-center">% Completion</th>
+                  <th className="px-3 py-2.5">Comments</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <RefreshCw className="h-5 w-5 animate-spin text-accent" />
+                        <span className="text-xs">Loading shift records...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : workUpdateRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-12 text-center text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Layers className="h-7 w-7 text-muted/50" />
+                        <p className="text-sm font-semibold text-foreground">
+                          No queued or in-progress serial records found
+                        </p>
+                        <p className="text-xs text-muted">
+                          All serials for this batch may be completed, or select another batch/plan and click <strong>Get Details</strong>.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  workUpdateRecords.map((row) => {
+                    const isSelected = selectedSerialIds.has(row.id)
+
+                    return (
+                      <tr
+                        key={row.id}
+                        onClick={() => handleToggleRow(row.id)}
+                        className={`cursor-pointer transition ${
+                          isSelected
+                            ? 'bg-accent/10 hover:bg-accent/15'
+                            : 'hover:bg-surface-muted/40'
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <td
+                          className="w-10 px-3 py-2 text-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleRow(row.id)}
+                            aria-label={`Select ${row.serialNumber}`}
+                            className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent"
+                          />
+                        </td>
+
+                        {/* Serails Number */}
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="font-mono text-xs font-bold text-accent">
+                            {row.serialNumber}
+                          </span>
+                        </td>
+
+                        {/* ProcessName */}
+                        <td className="px-3 py-2 whitespace-nowrap text-xs font-semibold text-foreground">
+                          {row.processName || row.processStepName}
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeClass(
+                              row.status,
+                            )}`}
+                          >
+                            {row.status.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+
+                        {/* % Completion */}
+                        <td className="px-3 py-2 whitespace-nowrap text-center">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-mono text-[11px] font-bold text-foreground">
+                              {row.completedPercent}%
+                            </span>
+                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-muted">
+                              <div
+                                className="h-full bg-accent transition-all duration-300"
+                                style={{
+                                  width: `${Math.min(100, Math.max(0, row.completedPercent))}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Comments */}
+                        <td className="px-3 py-2 max-w-[260px]">
+                          <span
+                            className="truncate block text-xs text-muted"
+                            title={row.comments}
+                          >
+                            {row.comments || '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* TAB 3: TOOL CHANGE (Logged Tool Usage Records) */}
+        {activeTab === 'TOOL_CHANGE' && (
+          <div className="overflow-x-auto">
+            <div className="border-b border-border/80 px-4 py-2.5 bg-surface-muted/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-accent" />
+                <span className="text-xs font-bold text-foreground">Tool Change & Usage Log</span>
+                <span className="rounded-full bg-accent/15 text-accent text-[10px] font-bold px-2 py-0.5">
+                  {filteredToolRecords.length} Logs
+                </span>
+              </div>
+              <span className="text-[10px] text-muted font-medium">
+                Log of mounted tools, operational time, and wear remarks
+              </span>
+            </div>
+
+            <table className="min-w-full text-left text-xs">
+              <thead className="border-b border-border bg-surface-muted/60 text-[10px] font-bold uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="px-3 py-2.5">Tool Code & Name</th>
+                  <th className="px-3 py-2.5">Machine</th>
+                  <th className="px-3 py-2.5">Operator</th>
+                  <th className="px-3 py-2.5">Shift</th>
+                  <th className="px-3 py-2.5 text-center">Start Time</th>
+                  <th className="px-3 py-2.5 text-center">End Time</th>
+                  <th className="px-3 py-2.5 text-center">Duration</th>
+                  <th className="px-3 py-2.5">Notes / Wear Condition</th>
+                  <th className="px-3 py-2.5">Logged At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredToolRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Wrench className="h-7 w-7 text-muted/50" />
+                        <p className="text-sm font-semibold text-foreground">
+                          No tool change logs found for current selection
+                        </p>
+                        <p className="text-xs text-muted">
+                          Select an assigned tool above, enter start/end times, and click <strong>Submit Tool Usage</strong>.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredToolRecords.map((t) => (
+                    <tr key={t.id} className="transition hover:bg-surface-muted/30">
+                      {/* Tool Code & Name */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className="font-mono text-xs font-bold text-accent mr-2">
+                          {t.toolCode}
+                        </span>
+                        <span className="font-semibold text-foreground">{t.toolName}</span>
+                      </td>
+
+                      {/* Machine */}
+                      <td className="px-3 py-2 whitespace-nowrap font-medium text-foreground">
+                        {t.machineCode}
+                      </td>
+
+                      {/* Operator */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-foreground font-medium">
+                        {t.operatorName || 'Floor Operator'}
+                      </td>
+
+                      {/* Shift */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-foreground">
+                        {t.shift}
+                      </td>
+
+                      {/* Start Time */}
+                      <td className="px-3 py-2 whitespace-nowrap text-center font-mono text-xs font-semibold text-foreground">
+                        {t.startTime}
+                      </td>
+
+                      {/* End Time */}
+                      <td className="px-3 py-2 whitespace-nowrap text-center font-mono text-xs font-semibold text-foreground">
+                        {t.endTime}
+                      </td>
+
+                      {/* Duration */}
+                      <td className="px-3 py-2 whitespace-nowrap text-center">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-2 py-0.5 text-xs font-bold text-accent">
+                          <Clock className="h-3 w-3" />
+                          {t.duration}
+                        </span>
+                      </td>
+
+                      {/* Notes */}
+                      <td className="px-3 py-2 max-w-[240px]">
+                        <span className="truncate block text-xs text-muted" title={t.remarks}>
+                          {t.remarks || '—'}
+                        </span>
+                      </td>
+
+                      {/* Logged At */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-muted font-mono">
+                        {t.loggedAt}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* TAB 4: BREAK DOWN (Logged Machine Breakdown Records) */}
+        {activeTab === 'BREAKDOWN' && (
+          <div className="overflow-x-auto">
+            <div className="border-b border-border/80 px-4 py-2.5 bg-surface-muted/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <span className="text-xs font-bold text-foreground">Machine Breakdown & Stoppage Log</span>
+                <span className="rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5">
+                  {filteredBreakdownRecords.length} Reports
+                </span>
+              </div>
+              <span className="text-[10px] text-muted font-medium">
+                Log of unplanned stoppages, root causes, and resolution duration
+              </span>
+            </div>
+
+            <table className="min-w-full text-left text-xs">
+              <thead className="border-b border-border bg-surface-muted/60 text-[10px] font-bold uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="px-3 py-2.5">Machine</th>
+                  <th className="px-3 py-2.5">Issue Category</th>
+                  <th className="px-3 py-2.5">Operator</th>
+                  <th className="px-3 py-2.5 text-center">Start Time</th>
+                  <th className="px-3 py-2.5 text-center">End Time</th>
+                  <th className="px-3 py-2.5 text-center">Duration</th>
+                  <th className="px-3 py-2.5">Reason / Action Taken</th>
+                  <th className="px-3 py-2.5">Shift</th>
+                  <th className="px-3 py-2.5 text-center">Status</th>
+                  <th className="px-3 py-2.5">Logged At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredBreakdownRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <AlertTriangle className="h-7 w-7 text-muted/50" />
+                        <p className="text-sm font-semibold text-foreground">
+                          No machine breakdown reports found for current selection
+                        </p>
+                        <p className="text-xs text-muted">
+                          Report any unplanned stoppages using the breakdown form above.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBreakdownRecords.map((b) => (
+                    <tr key={b.id} className="transition hover:bg-surface-muted/30">
+                      {/* Machine */}
+                      <td className="px-3 py-2 whitespace-nowrap font-mono text-xs font-bold text-accent">
+                        {b.machineCode}
+                      </td>
+
+                      {/* Issue Category */}
+                      <td className="px-3 py-2 whitespace-nowrap font-semibold text-foreground">
+                        {b.category}
+                      </td>
+
+                      {/* Operator */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-foreground font-medium">
+                        {b.operatorName || 'Floor Operator'}
+                      </td>
+
+                      {/* Start Time */}
+                      <td className="px-3 py-2 whitespace-nowrap text-center font-mono text-xs font-semibold text-foreground">
+                        {b.startTime}
+                      </td>
+
+                      {/* End Time */}
+                      <td className="px-3 py-2 whitespace-nowrap text-center font-mono text-xs font-semibold text-foreground">
+                        {b.endTime}
+                      </td>
+
+                      {/* Duration */}
+                      <td className="px-3 py-2 whitespace-nowrap text-center">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 text-xs font-bold">
+                          <Clock className="h-3 w-3" />
+                          {b.duration}
+                        </span>
+                      </td>
+
+                      {/* Reason */}
+                      <td className="px-3 py-2 max-w-[280px]">
+                        <span className="truncate block text-xs text-foreground" title={b.reason}>
+                          {b.reason}
+                        </span>
+                      </td>
+
+                      {/* Shift */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-muted">
+                        {b.shift}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-3 py-2 text-center whitespace-nowrap">
+                        <span className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          {b.status}
+                        </span>
+                      </td>
+
+                      {/* Logged At */}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-muted font-mono">
+                        {b.loggedAt}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   )

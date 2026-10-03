@@ -20,7 +20,7 @@ interface SearchableSelectProps {
   className?: string
   id?: string
   allowClear?: boolean
-  size?: 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md'
 }
 
 export function SearchableSelect({
@@ -96,11 +96,17 @@ export function SearchableSelect({
   }
 
   return (
-    <div className={`relative ${className}`} ref={containerRef}>
+    <div className={`relative ${className} ${isOpen ? 'z-30' : ''}`} ref={containerRef}>
       {label ? (
         <label
           htmlFor={selectId}
-          className={`${size === 'sm' ? 'mb-1 text-xs' : 'mb-1.5 text-sm'} block font-bold text-foreground`}
+          className={`${
+            size === 'xs'
+              ? 'mb-1 text-[10px] uppercase tracking-wider text-muted'
+              : size === 'sm'
+                ? 'mb-1 text-xs text-foreground'
+                : 'mb-1.5 text-sm text-foreground'
+          } block font-bold`}
         >
           {label} {required && <span className="text-danger">*</span>}
         </label>
@@ -125,7 +131,11 @@ export function SearchableSelect({
           }
         }}
         className={`flex ${
-          size === 'sm' ? 'min-h-9 h-9 px-2.5 text-xs rounded-lg' : 'min-h-12 px-3 text-base rounded-xl'
+          size === 'xs'
+            ? 'min-h-8 h-8 px-2.5 text-xs rounded-lg'
+            : size === 'sm'
+              ? 'min-h-9 h-9 px-2.5 text-xs rounded-lg'
+              : 'min-h-12 px-3 text-base rounded-xl'
         } w-full cursor-pointer items-center justify-between border outline-none transition ${
           disabled
             ? 'cursor-not-allowed border-border/50 bg-surface-muted/50 opacity-60 text-muted'
@@ -152,18 +162,18 @@ export function SearchableSelect({
         </div>
 
         <div className="flex items-center gap-1 pl-2">
-          {allowClear && selectedOption && !disabled && (
+          {allowClear && selectedOption && selectedOption.value !== '' && !disabled && (
             <button
               type="button"
               onClick={handleClear}
-              className="rounded-lg p-1 text-muted hover:bg-surface hover:text-foreground"
+              className="rounded-lg p-0.5 text-muted hover:bg-surface hover:text-foreground"
               title="Clear selection"
             >
-              <X className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+              <X className={size === 'xs' || size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
             </button>
           )}
           <ChevronDown
-            className={`${size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-muted transition-transform duration-200 ${
+            className={`${size === 'xs' || size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-muted transition-transform duration-200 ${
               isOpen ? 'rotate-180 text-accent' : ''
             }`}
           />
@@ -186,9 +196,17 @@ export function SearchableSelect({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setIsOpen(false)
+                  } else if (e.key === 'Enter' && filteredOptions.length > 0) {
+                    e.preventDefault()
+                    handleSelect(filteredOptions[0].value)
+                  }
+                }}
                 placeholder="Search..."
                 className={`w-full rounded-lg border border-border bg-surface-muted ${
-                  size === 'sm' ? 'py-1 pl-8 pr-2.5 text-xs' : 'py-1.5 pl-8 pr-3 text-sm'
+                  size === 'xs' || size === 'sm' ? 'py-1 pl-8 pr-2.5 text-xs' : 'py-1.5 pl-8 pr-3 text-sm'
                 } text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent`}
                 onClick={(e) => e.stopPropagation()}
               />
@@ -205,7 +223,7 @@ export function SearchableSelect({
           </div>
 
           {/* Options List */}
-          <div className={`max-h-56 overflow-y-auto p-1 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
+          <div className={`max-h-56 overflow-y-auto p-1 ${size === 'xs' || size === 'sm' ? 'text-xs' : 'text-sm'}`}>
             {filteredOptions.length === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-muted">
                 No matches found
@@ -215,11 +233,11 @@ export function SearchableSelect({
                 const isSelected = opt.value === value
                 return (
                   <button
-                    key={opt.value}
+                    key={opt.value || '__all__'}
                     type="button"
                     onClick={() => handleSelect(opt.value)}
                     className={`flex w-full items-center justify-between rounded-lg ${
-                      size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-left'
+                      size === 'xs' || size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-left'
                     } transition ${
                       isSelected
                         ? 'bg-accent/10 font-bold text-accent'
