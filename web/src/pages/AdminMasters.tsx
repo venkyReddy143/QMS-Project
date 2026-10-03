@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react'
 import { useToast } from '../components/Toast'
 import { useConfirm } from '../components/ConfirmDialog'
 import { RowActionsMenu } from '../components/RowActionsMenu'
@@ -170,10 +170,14 @@ export function AdminMasters({ section }: { section?: Tab } = {}) {
             setShowForm(true)
             setCreateTick((current) => current + 1)
           }}
+          aria-label={showForm ? `Back to ${action.heading}` : action.create}
           className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-bold text-white hover:brightness-110"
         >
           {showForm ? (
-            action.view
+            <>
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </>
           ) : (
             <>
               <PlusCircle className="h-4 w-4" />
