@@ -1455,7 +1455,7 @@ export function ProductionPlanning() {
     setToolStartTime('')
     setToolEndTime('')
     setToolRemarks('')
-    setNotice(`Tool change logged for ${toolObj.code} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
+    toast.success(`Tool change logged for ${toolObj.code} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
   }
 
   // Handle Breakdown Submission
@@ -1503,7 +1503,7 @@ export function ProductionPlanning() {
     setBreakdownStartTime('')
     setBreakdownEndTime('')
     setBreakdownReason('')
-    setNotice(`Breakdown record logged for ${newRecord.machineCode} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
+    toast.success(`Breakdown record logged for ${newRecord.machineCode} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
   }
 
   // Synchronize form when selected serials change
