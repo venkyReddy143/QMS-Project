@@ -233,6 +233,55 @@ export function calculateDuration(startTime: string, endTime: string): string {
   return `${hours} hr${hours > 1 ? 's' : ''} ${mins} mins`
 }
 
+/** Automatically detects and returns the shift name corresponding to the current time */
+export function getCurrentTimeShift(options?: string[]): string {
+  const now = new Date()
+  const currentMins = now.getHours() * 60 + now.getMinutes()
+
+  const defaultShifts = [
+    { name: 'Shift A (06:00 - 14:00)', prefix: 'Shift A', start: 6 * 60, end: 14 * 60 },
+    { name: 'Shift B (14:00 - 22:00)', prefix: 'Shift B', start: 14 * 60, end: 22 * 60 },
+    { name: 'Shift C (22:00 - 06:00)', prefix: 'Shift C', start: 22 * 60, end: 6 * 60 },
+  ]
+
+  // If specific available shift options are provided, parse their (HH:mm - HH:mm) ranges
+  if (options && options.length > 0) {
+    for (const opt of options) {
+      const match = opt.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/)
+      if (match) {
+        const start = Number(match[1]) * 60 + Number(match[2])
+        const end = Number(match[3]) * 60 + Number(match[4])
+        if (start < end) {
+          if (currentMins >= start && currentMins < end) {
+            return opt
+          }
+        } else {
+          // Crosses midnight (e.g. 22:00 - 06:00)
+          if (currentMins >= start || currentMins < end) {
+            return opt
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback to standard 3 shifts:
+  let targetPrefix = 'Shift A'
+  if (currentMins >= 14 * 60 && currentMins < 22 * 60) {
+    targetPrefix = 'Shift B'
+  } else if (currentMins >= 22 * 60 || currentMins < 6 * 60) {
+    targetPrefix = 'Shift C'
+  }
+
+  if (options && options.length > 0) {
+    const match = options.find((o) => o.startsWith(targetPrefix))
+    if (match) return match
+  }
+
+  const def = defaultShifts.find((s) => s.prefix === targetPrefix)
+  return def ? def.name : 'Shift A (06:00 - 14:00)'
+}
+
 // Backwards-compatible type aliases
 export type SerialWorkLog = SerialRecordItem
 export type MainSerialRow = SerialRecordItem
@@ -288,9 +337,7 @@ export function ProductionPlanning() {
   const [selectedProcessStep, setSelectedProcessStep] = useState(
     () => localStorage.getItem('qms_selected_process_step') || '',
   )
-  const [selectedShift, setSelectedShift] = useState(
-    () => localStorage.getItem('qms_selected_shift') || '',
-  )
+  const [selectedShift, setSelectedShift] = useState<string>(() => getCurrentTimeShift())
   const [selectedUser, setSelectedUser] = useState(
     () => localStorage.getItem('qms_selected_user') || '',
   )
@@ -344,6 +391,11 @@ export function ProductionPlanning() {
   const [formCompletedPercent, setFormCompletedPercent] = useState<number>(0)
   const [formStatus, setFormStatus] = useState<string>('IN_PROGRESS')
   const [formComments, setFormComments] = useState<string>('')
+  const [formUser, setFormUser] = useState<string>(() => {
+    const saved = localStorage.getItem('qms_selected_user')
+    return saved && saved !== 'All Users' ? saved : ''
+  })
+  const [formUserError, setFormUserError] = useState<string | null>(null)
 
   // Tool Change Records & Form States (No static mock records)
   const [toolRecords, setToolRecords] = useState<ToolChangeRecord[]>(() => {
@@ -510,18 +562,47 @@ export function ProductionPlanning() {
         targetPlan = fetchedPlans[0]
       }
 
+      // 1. Shift: Auto-select shift based on current time on initial load
+      let availableShiftOptions: string[] = []
+      if (optionsRes.options?.shifts && optionsRes.options.shifts.length > 0) {
+        availableShiftOptions = optionsRes.options.shifts.map((s) => {
+          if (s.name && s.name.includes('(')) return s.name
+          return s.startTime && s.endTime
+            ? `${s.name} (${s.startTime} - ${s.endTime})`
+            : s.name
+        })
+      } else {
+        availableShiftOptions = [
+          'Shift A (06:00 - 14:00)',
+          'Shift B (14:00 - 22:00)',
+          'Shift C (22:00 - 06:00)',
+        ]
+      }
+      const initialShift = getCurrentTimeShift(availableShiftOptions)
+      setSelectedShift(initialShift)
+      try {
+        localStorage.setItem('qms_selected_shift', initialShift)
+      } catch {}
+
+      // 2. User: Determine initial user selection
+      let initialUser = ''
+      if (savedUser !== null && savedUser !== undefined) {
+        initialUser = savedUser === 'All Users' ? '' : savedUser
+      } else if (targetPlan?.operatorName) {
+        initialUser = targetPlan.operatorName
+      }
+      setSelectedUser(initialUser)
+      if (initialUser && initialUser !== 'All Users') {
+        setFormUser(initialUser)
+      } else {
+        setFormUser('')
+      }
+
       if (targetPlan) {
         setSelectedPlanNo(targetPlan.planNo)
         setSelectedBatchNo(targetPlan.batchNo)
         setSelectedProject(savedProject || targetPlan.productName)
         setSelectedProcessStep(savedProcessStep || targetPlan.processStepName)
-        setSelectedUser(savedUser || targetPlan.operatorName || (userItems[0]?.name ?? ''))
-        const initShift = (savedShift || targetPlan.shift || 'Shift B').trim()
-        const cleanPrefix = initShift.split(' (')[0]
-        const fullShift =
-          shiftOptions.find((s) => s.startsWith(cleanPrefix)) ||
-          (initShift.includes('(') ? initShift : `${initShift} (14:00 - 22:00)`)
-        setSelectedShift(fullShift)
         if (savedDate) setSelectedDate(savedDate)
 
         try {
@@ -532,10 +613,6 @@ export function ProductionPlanning() {
         // Populate initial serial records
         generateRecordsForPlan(targetPlan, fetchedBatches)
       } else {
-        setSelectedShift(savedShift || 'Shift B (14:00 - 22:00)')
-        if (userItems.length > 0) {
-          setSelectedUser(savedUser || userItems[0].name)
-        }
         if (savedDate) setSelectedDate(savedDate)
       }
     } catch (err) {
@@ -640,6 +717,25 @@ export function ProductionPlanning() {
       })),
     ]
   }, [usersList])
+
+  const formUserOptions = useMemo<SelectOption[]>(() => {
+    return usersList.map((u) => ({
+      value: u.name,
+      label: u.name,
+      subLabel: u.employeeCode ? `ID: ${u.employeeCode}` : undefined,
+      badge: u.role || undefined,
+    }))
+  }, [usersList])
+
+  // Synchronize formUser whenever selectedUser changes in the top filter section
+  useEffect(() => {
+    if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
+      setFormUser(selectedUser.trim())
+    } else {
+      setFormUser('')
+    }
+    setFormUserError(null)
+  }, [selectedUser])
 
   // Synchronize when Plan No changes
   function handlePlanNoChange(planNo: string) {
@@ -1532,6 +1628,17 @@ export function ProductionPlanning() {
   function handleApplyUpdate() {
     if (selectedSerialIds.size === 0) return
 
+    // Validate required user / operator selection:
+    if (!formUser || formUser.trim() === '' || formUser.trim() === 'All Users') {
+      setFormUserError('Please select an assigned user / operator.')
+      setError('Please select an assigned user / operator in Update Progress to proceed.')
+      return
+    }
+
+    const assignedUser = formUser.trim()
+    const userItem = usersList.find((u) => u.name === assignedUser)
+    const assignedUserId = userItem?.id
+
     const updatedPercent =
       formStatus === 'COMPLETED'
         ? 100
@@ -1557,7 +1664,9 @@ export function ProductionPlanning() {
         completedPercent: 100,
         comments: updatedComments || item.comments || 'Completed shift work',
         completedAt: new Date().toISOString(),
-        completedBy: selectedUser || undefined,
+        completedBy: assignedUser,
+        operatorName: assignedUser,
+        operatorId: assignedUserId || item.operatorId,
       }))
 
       // Remove from qms_serial_updates
@@ -1588,6 +1697,7 @@ export function ProductionPlanning() {
           completedPercent: 100,
           comments: updatedComments || r.comments,
           currentProcessStepName: r.processStepName,
+          operatorName: assignedUser,
         }))
         updateBatchSerialsApi(sample.orderId, sample.batchId, {
           shift: selectedShift,
@@ -1601,7 +1711,7 @@ export function ProductionPlanning() {
       setSelectedSerialIds(new Set())
       setFormComments('')
       toast.success(
-        `Successfully marked ${selectedCount} serial(s) as Completed and stored in completed collection!`,
+        `Successfully marked ${selectedCount} serial(s) as Completed by ${assignedUser} and stored in completed collection!`,
       )
     } else {
       // Regular in-progress / status update (< 100%):
@@ -1616,7 +1726,7 @@ export function ProductionPlanning() {
           status: updatedStatus,
           comments: updatedComments || item.comments,
           shift: selectedShift || item.shift,
-          operatorName: selectedUser || item.operatorName,
+          operatorName: assignedUser,
           planNo: item.planNo || selectedPlanNo,
           batchNo: item.batchNo || selectedBatchNo,
           productName: item.productName || selectedProject,
@@ -1647,6 +1757,8 @@ export function ProductionPlanning() {
               completedPercent: updatedPercent, // Overrides prior progress (e.g. 30% -> 50%)
               status: updatedStatus,           // Overrides status (e.g. IN_PROGRESS)
               comments: updatedComments || item.comments,
+              operatorName: assignedUser,
+              operatorId: assignedUserId || item.operatorId,
             }
           }
           return item
@@ -1665,6 +1777,7 @@ export function ProductionPlanning() {
                 status: updatedStatus,
                 completedPercent: updatedPercent,
                 comments: updatedComments || s.comments,
+                operatorName: assignedUser,
               }
             }
             return s
@@ -1682,6 +1795,7 @@ export function ProductionPlanning() {
           completedPercent: updatedPercent,
           comments: updatedComments || r.comments,
           currentProcessStepName: r.processStepName,
+          operatorName: assignedUser,
         }))
         updateBatchSerialsApi(sample.orderId, sample.batchId, {
           shift: selectedShift,
@@ -1694,8 +1808,8 @@ export function ProductionPlanning() {
       // 6. Clear selections and comments after applying update so table displays updated rows cleanly
       setSelectedSerialIds(new Set())
       setFormComments('')
-         toast.success(
-        `Successfully updated ${selectedCount} serial record(s) to ${updatedPercent}% (${updatedStatus.replace(/_/g, ' ')})! Previous progress overridden with current value (${updatedPercent}%).`,
+      toast.success(
+        `Successfully updated ${selectedCount} serial record(s) to ${updatedPercent}% (${updatedStatus.replace(/_/g, ' ')}) by ${assignedUser}! Previous progress overridden with current value (${updatedPercent}%).`,
       )
     }
   }
@@ -1917,6 +2031,12 @@ export function ProductionPlanning() {
                     value={selectedUser}
                     onChange={(val) => {
                       setSelectedUser(val)
+                      if (val && val !== 'All Users') {
+                        setFormUser(val)
+                      } else {
+                        setFormUser('')
+                      }
+                      setFormUserError(null)
                       try {
                         localStorage.setItem('qms_selected_user', val)
                       } catch {}
@@ -1971,6 +2091,30 @@ export function ProductionPlanning() {
                     </div>
 
                     <div className="space-y-2.5">
+                      {/* Assigned User / Operator Dropdown */}
+                      <div>
+                        <SearchableSelect
+                          id="formUserSelect"
+                          label="Assigned User / Operator"
+                          size="xs"
+                          placeholder="Select user / operator..."
+                          options={formUserOptions}
+                          value={formUser}
+                          onChange={(val) => {
+                            setFormUser(val)
+                            setFormUserError(null)
+                            setError(null)
+                          }}
+                          required
+                          error={formUserError || undefined}
+                        />
+                        {formUserError && (
+                          <p className="mt-1 text-[10px] font-semibold text-danger">
+                            {formUserError}
+                          </p>
+                        )}
+                      </div>
+
                       {/* % of completion as a Textbox instead of option buttons */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
