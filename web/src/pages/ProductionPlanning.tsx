@@ -411,6 +411,11 @@ export function ProductionPlanning() {
     return []
   })
 
+  const [toolUser, setToolUser] = useState<string>(() => {
+    const saved = localStorage.getItem('qms_selected_user')
+    return saved && saved !== 'All Users' ? saved : ''
+  })
+  const [toolUserError, setToolUserError] = useState<string | null>(null)
   const [selectedToolCode, setSelectedToolCode] = useState<string>('')
   const [toolStartTime, setToolStartTime] = useState<string>('')
   const [toolEndTime, setToolEndTime] = useState<string>('')
@@ -435,6 +440,11 @@ export function ProductionPlanning() {
     return []
   })
 
+  const [breakdownUser, setBreakdownUser] = useState<string>(() => {
+    const saved = localStorage.getItem('qms_selected_user')
+    return saved && saved !== 'All Users' ? saved : ''
+  })
+  const [breakdownUserError, setBreakdownUserError] = useState<string | null>(null)
   const [breakdownCategory, setBreakdownCategory] = useState<string>('')
   const [breakdownStartTime, setBreakdownStartTime] = useState<string>('')
   const [breakdownEndTime, setBreakdownEndTime] = useState<string>('')
@@ -594,8 +604,12 @@ export function ProductionPlanning() {
       setSelectedUser(initialUser)
       if (initialUser && initialUser !== 'All Users') {
         setFormUser(initialUser)
+        setToolUser(initialUser)
+        setBreakdownUser(initialUser)
       } else {
         setFormUser('')
+        setToolUser('')
+        setBreakdownUser('')
       }
 
       if (targetPlan) {
@@ -727,14 +741,20 @@ export function ProductionPlanning() {
     }))
   }, [usersList])
 
-  // Synchronize formUser whenever selectedUser changes in the top filter section
+  // Synchronize formUser, toolUser, and breakdownUser whenever selectedUser changes in the top filter section
   useEffect(() => {
     if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
       setFormUser(selectedUser.trim())
+      setToolUser(selectedUser.trim())
+      setBreakdownUser(selectedUser.trim())
     } else {
       setFormUser('')
+      setToolUser('')
+      setBreakdownUser('')
     }
     setFormUserError(null)
+    setToolUserError(null)
+    setBreakdownUserError(null)
   }, [selectedUser])
 
   // Synchronize when Plan No changes
@@ -1508,6 +1528,11 @@ export function ProductionPlanning() {
 
   // Handle Tool Change Submission
   function handleSubmitToolChange() {
+    if (!toolUser || toolUser.trim() === '' || toolUser.trim() === 'All Users') {
+      setToolUserError('Please select an assigned user / operator.')
+      setError('Please select an assigned user / operator for tool usage.')
+      return
+    }
     if (!selectedToolCode) {
       setError('Please select an assigned tool.')
       return
@@ -1519,6 +1544,7 @@ export function ProductionPlanning() {
     const toolObj =
       ASSIGNED_TOOLS.find((t) => t.code === selectedToolCode) || ASSIGNED_TOOLS[0]
     const dur = calculateDuration(toolStartTime, toolEndTime) || '0 mins'
+    const assignedOperator = toolUser.trim()
 
     const newRecord: ToolChangeRecord = {
       id: `tc-${Date.now()}`,
@@ -1530,7 +1556,7 @@ export function ProductionPlanning() {
       processStepName: selectedProcessStep,
       shift: selectedShift || 'Shift B',
       date: selectedDate,
-      operatorName: selectedUser || 'Floor Operator',
+      operatorName: assignedOperator,
       startTime: toolStartTime,
       endTime: toolEndTime,
       duration: dur,
@@ -1551,11 +1577,17 @@ export function ProductionPlanning() {
     setToolStartTime('')
     setToolEndTime('')
     setToolRemarks('')
-    toast.success(`Tool change logged for ${toolObj.code} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
+    setToolUserError(null)
+    toast.success(`Tool change logged for ${toolObj.code} (${dur}) by ${assignedOperator}.`)
   }
 
   // Handle Breakdown Submission
   function handleSubmitBreakdown() {
+    if (!breakdownUser || breakdownUser.trim() === '' || breakdownUser.trim() === 'All Users') {
+      setBreakdownUserError('Please select an assigned user / operator.')
+      setError('Please select an assigned user / operator for machine breakdown.')
+      return
+    }
     if (!breakdownCategory) {
       setError('Please select a machine issue category.')
       return
@@ -1569,6 +1601,7 @@ export function ProductionPlanning() {
       return
     }
     const dur = calculateDuration(breakdownStartTime, breakdownEndTime) || '0 mins'
+    const assignedOperator = breakdownUser.trim()
 
     const newRecord: BreakdownRecord = {
       id: `bd-${Date.now()}`,
@@ -1578,7 +1611,7 @@ export function ProductionPlanning() {
       batchNo: selectedBatchNo,
       shift: selectedShift || 'Shift B',
       date: selectedDate,
-      operatorName: selectedUser || 'Floor Operator',
+      operatorName: assignedOperator,
       startTime: breakdownStartTime,
       endTime: breakdownEndTime,
       duration: dur,
@@ -1599,7 +1632,8 @@ export function ProductionPlanning() {
     setBreakdownStartTime('')
     setBreakdownEndTime('')
     setBreakdownReason('')
-    toast.success(`Breakdown record logged for ${newRecord.machineCode} (${dur}) for ${selectedUser || 'Floor Operator'}.`)
+    setBreakdownUserError(null)
+    toast.success(`Breakdown record logged for ${newRecord.machineCode} (${dur}) by ${assignedOperator}.`)
   }
 
   // Synchronize form when selected serials change
@@ -2033,10 +2067,16 @@ export function ProductionPlanning() {
                       setSelectedUser(val)
                       if (val && val !== 'All Users') {
                         setFormUser(val)
+                        setToolUser(val)
+                        setBreakdownUser(val)
                       } else {
                         setFormUser('')
+                        setToolUser('')
+                        setBreakdownUser('')
                       }
                       setFormUserError(null)
+                      setToolUserError(null)
+                      setBreakdownUserError(null)
                       try {
                         localStorage.setItem('qms_selected_user', val)
                       } catch {}
@@ -2312,6 +2352,30 @@ export function ProductionPlanning() {
                   </div>
 
                   <div className="space-y-2">
+                    {/* Assigned User / Operator Dropdown */}
+                    <div>
+                      <SearchableSelect
+                        id="toolUserSelect"
+                        label="Assigned User / Operator"
+                        size="xs"
+                        placeholder="Select user / operator..."
+                        options={formUserOptions}
+                        value={toolUser}
+                        onChange={(val) => {
+                          setToolUser(val)
+                          setToolUserError(null)
+                          setError(null)
+                        }}
+                        required
+                        error={toolUserError || undefined}
+                      />
+                      {toolUserError && (
+                        <p className="mt-1 text-[10px] font-semibold text-danger">
+                          {toolUserError}
+                        </p>
+                      )}
+                    </div>
+
                     {/* Tool selection */}
                     <div>
                       <label
@@ -2436,6 +2500,30 @@ export function ProductionPlanning() {
                   </div>
 
                   <div className="space-y-2">
+                    {/* Assigned User / Operator Dropdown */}
+                    <div>
+                      <SearchableSelect
+                        id="breakdownUserSelect"
+                        label="Assigned User / Operator"
+                        size="xs"
+                        placeholder="Select user / operator..."
+                        options={formUserOptions}
+                        value={breakdownUser}
+                        onChange={(val) => {
+                          setBreakdownUser(val)
+                          setBreakdownUserError(null)
+                          setError(null)
+                        }}
+                        required
+                        error={breakdownUserError || undefined}
+                      />
+                      {breakdownUserError && (
+                        <p className="mt-1 text-[10px] font-semibold text-danger">
+                          {breakdownUserError}
+                        </p>
+                      )}
+                    </div>
+
                     {/* Machine & Category */}
                     <div>
                       <label
