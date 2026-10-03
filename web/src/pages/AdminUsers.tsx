@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { PlusCircle } from 'lucide-react'
+import { ArrowLeft, PlusCircle } from 'lucide-react'
 import { useToast } from '../components/Toast'
 import { useConfirm } from '../components/ConfirmDialog'
 import { RowActionsMenu } from '../components/RowActionsMenu'
@@ -190,10 +190,14 @@ export function AdminUsers({ title = 'Users' }: { title?: string } = {}) {
         <button
           type="button"
           onClick={() => (showForm ? resetForm() : openCreate())}
+          aria-label={showForm ? `Back to ${title}` : undefined}
           className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-bold text-white hover:brightness-110"
         >
           {showForm ? (
-            title === 'Workers' ? 'View Workers' : 'View Users'
+            <>
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </>
           ) : (
             <>
               <PlusCircle className="h-4 w-4" />
