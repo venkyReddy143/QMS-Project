@@ -311,6 +311,16 @@ function statusBadgeClass(status: string | undefined): string {
   }
 }
 
+export function isInProgressRecord(record: SerialRecordItem): boolean {
+  const s = String(record.status ?? '').toUpperCase()
+  const pct = Number(record.completedPercent) || 0
+  return s === 'IN_PROGRESS' || s === 'RUNNING' || (pct > 0 && pct < 100)
+}
+
+export function isQueuedRecord(record: SerialRecordItem): boolean {
+  return !isInProgressRecord(record) && (Number(record.completedPercent) || 0) < 100
+}
+
 export function ProductionPlanning() {
   const [plans, setPlans] = useState<ProductionPlan[]>([])
   const [batches, setBatches] = useState<ProductionBatch[]>([])
@@ -1163,7 +1173,8 @@ export function ProductionPlanning() {
     return match?.machineCode || 'CNC-01'
   }, [plans, selectedPlanNo, selectedBatchNo])
 
-  // In Work Update tab: show queued/new and inprogress status records filtered dynamically by selections
+  // In Work Update tab: show all queued/new and inprogress serial records present in that batch/plan
+  // Serial records are NOT restricted by user or shift, enabling handover between shifts/operators
   const workUpdateRecords = useMemo(() => {
     return serialRecords.filter((r) => {
       const s = (r.status || '').toUpperCase()
@@ -1179,33 +1190,6 @@ export function ProductionPlanning() {
         const rowStep = (r.processStepName || r.processName || '').toLowerCase()
         const targetStep = selectedProcessStep.toLowerCase()
         if (rowStep && !rowStep.includes(targetStep) && !targetStep.includes(rowStep)) {
-          return false
-        }
-      }
-
-      // Filter by Shift (clean prefix match)
-      if (selectedShift && r.shift) {
-        const cleanFilter = selectedShift.split(' (')[0].trim().toUpperCase()
-        const cleanRow = r.shift.split(' (')[0].trim().toUpperCase()
-        if (cleanFilter && cleanRow && cleanFilter !== cleanRow) {
-          return false
-        }
-      }
-
-      // Filter by User: if a user is selected, match that user, but don't filter out unassigned or generic records
-      if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
-        const targetUser = selectedUser.trim().toLowerCase()
-        const rowUser = (r.operatorName || '').trim().toLowerCase()
-        if (rowUser && rowUser !== 'floor operator' && rowUser !== targetUser) {
-          return false
-        }
-      }
-
-      // Filter by Date (clean day comparison)
-      if (selectedDate && r.date) {
-        const cleanRowDate = r.date.slice(0, 10)
-        const cleanFilterDate = selectedDate.slice(0, 10)
-        if (cleanRowDate && cleanFilterDate && cleanRowDate !== cleanFilterDate) {
           return false
         }
       }
@@ -1247,9 +1231,6 @@ export function ProductionPlanning() {
     selectedBatchNo,
     selectedProject,
     selectedProcessStep,
-    selectedShift,
-    selectedUser,
-    selectedDate,
   ])
 
   // In View tab: show all completed records filtered dynamically by selections
@@ -1368,33 +1349,6 @@ export function ProductionPlanning() {
         }
       }
 
-      // Filter by Shift (clean prefix match)
-      if (selectedShift) {
-        const cleanFilter = selectedShift.split(' (')[0].trim().toUpperCase()
-        const cleanRow = (row.shift || '').split(' (')[0].trim().toUpperCase()
-        if (cleanFilter && cleanRow && cleanFilter !== cleanRow) {
-          return false
-        }
-      }
-
-      // Filter by User (strict match: only records by this user if user is selected)
-      if (selectedUser && selectedUser.trim() !== '' && selectedUser.trim() !== 'All Users') {
-        const targetUser = selectedUser.trim().toLowerCase()
-        const rowUser = (row.completedBy || row.operatorName || '').trim().toLowerCase()
-        if (rowUser && rowUser !== 'floor operator' && rowUser !== targetUser) {
-          return false
-        }
-      }
-
-      // Filter by Date
-      if (selectedDate) {
-        const completedDate = row.completedAt ? row.completedAt.slice(0, 10) : ''
-        const rowDate = (row.date ? row.date.slice(0, 10) : '') || completedDate
-        if (rowDate && rowDate !== selectedDate.slice(0, 10)) {
-          return false
-        }
-      }
-
       return true
     })
   }, [
@@ -1405,9 +1359,6 @@ export function ProductionPlanning() {
     selectedBatchNo,
     selectedProject,
     selectedProcessStep,
-    selectedShift,
-    selectedUser,
-    selectedDate,
   ])
 
   // Tab 3: Tool Change - Filtered Dynamically by Selection
@@ -1504,25 +1455,78 @@ export function ProductionPlanning() {
     currentMachineCode,
   ])
 
+  // Queued records eligible for multi-selection
+  const queuedRecords = useMemo(
+    () => workUpdateRecords.filter((r) => isQueuedRecord(r)),
+    [workUpdateRecords],
+  )
+
+  const selectedRecords = useMemo(
+    () => serialRecords.filter((r) => selectedSerialIds.has(r.id)),
+    [serialRecords, selectedSerialIds],
+  )
+
+  const hasSelectedInProgress = useMemo(
+    () => selectedRecords.some((r) => isInProgressRecord(r)),
+    [selectedRecords],
+  )
+
+  const isAllQueuedSelected =
+    queuedRecords.length > 0 &&
+    selectedSerialIds.size === queuedRecords.length &&
+    !hasSelectedInProgress
+
   // Toggle selection of a single row
   function handleToggleRow(id: string) {
+    const item = serialRecords.find((r) => r.id === id)
+    if (!item) return
+
+    const isCurrentlySelected = selectedSerialIds.has(id)
+    if (isCurrentlySelected) {
+      // Unchecking is always allowed
+      setSelectedSerialIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+      return
+    }
+
+    const isProg = isInProgressRecord(item)
+
+    // Restrict multi-selection of In-Progress records:
+    if (hasSelectedInProgress) {
+      setError(
+        'In-Progress records cannot be multi-selected. Only Queued serial numbers can be selected together in bulk.',
+      )
+      return
+    }
+
+    if (selectedSerialIds.size > 0 && isProg) {
+      setError(
+        'In-Progress records cannot be multi-selected with Queued records. Only Queued serial numbers can be updated in bulk.',
+      )
+      return
+    }
+
+    // Allowed: add to selection
+    setError(null)
     setSelectedSerialIds((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
+      next.add(id)
       return next
     })
   }
 
-  // Toggle select all (Work Update tab)
+  // Toggle select all (Only Queued serials are enabled for bulk selection)
   function handleToggleSelectAll() {
-    if (selectedSerialIds.size === workUpdateRecords.length) {
+    if (queuedRecords.length === 0) return
+
+    if (isAllQueuedSelected) {
       setSelectedSerialIds(new Set())
     } else {
-      setSelectedSerialIds(new Set(workUpdateRecords.map((r) => r.id)))
+      setError(null)
+      setSelectedSerialIds(new Set(queuedRecords.map((r) => r.id)))
     }
   }
 
@@ -1661,6 +1665,18 @@ export function ProductionPlanning() {
   // Apply Update to Selected Serial Records
   function handleApplyUpdate() {
     if (selectedSerialIds.size === 0) return
+
+    // Guard: In-Progress records cannot be multi-selected
+    if (selectedSerialIds.size > 1) {
+      const selectedItems = serialRecords.filter((r) => selectedSerialIds.has(r.id))
+      const hasProg = selectedItems.some((r) => isInProgressRecord(r))
+      if (hasProg) {
+        setError(
+          'In-Progress records cannot be updated in bulk. Please update In-Progress serials individually, or select only Queued serials for multi-selection.',
+        )
+        return
+      }
+    }
 
     // Validate required user / operator selection:
     if (!formUser || formUser.trim() === '' || formUser.trim() === 'All Users') {
@@ -1847,9 +1863,6 @@ export function ProductionPlanning() {
       )
     }
   }
-
-  const isAllSelected =
-    workUpdateRecords.length > 0 && selectedSerialIds.size === workUpdateRecords.length
 
   return (
     <div className="space-y-4">
@@ -2255,11 +2268,15 @@ export function ProductionPlanning() {
                   </div>
 
                   <div className="pt-2.5 border-t border-border/80 mt-2.5 space-y-1.5">
-                    {selectedSerialIds.size > 1 && (
+                    {selectedSerialIds.size > 1 ? (
                       <p className="text-[10px] text-accent font-semibold text-center">
-                        Overrides progress to {formCompletedPercent}% for both selected serials
+                        Updating {selectedSerialIds.size} queued serials in bulk to {formCompletedPercent}%
                       </p>
-                    )}
+                    ) : hasSelectedInProgress ? (
+                      <p className="text-[10px] text-amber-600 font-semibold text-center">
+                        Updating single in-progress serial to {formCompletedPercent}%
+                      </p>
+                    ) : null}
                     <button
                       type="button"
                       onClick={handleApplyUpdate}
@@ -2267,7 +2284,7 @@ export function ProductionPlanning() {
                     >
                       <Check className="h-3.5 w-3.5" />
                       <span>
-                        Apply Update ({selectedSerialIds.size} Serials → {formCompletedPercent}%)
+                        Apply Update ({selectedSerialIds.size} Serial{selectedSerialIds.size > 1 ? 's' : ''} → {formCompletedPercent}%)
                       </span>
                     </button>
                   </div>
@@ -2765,6 +2782,7 @@ export function ProductionPlanning() {
                   <th className="px-3 py-2.5">Batch & Product</th>
                   <th className="px-3 py-2.5">ProcessName</th>
                   <th className="px-3 py-2.5">Shift</th>
+                  <th className="px-3 py-2.5">Completed By / Operator</th>
                   <th className="px-3 py-2.5 text-center">Status</th>
                   <th className="px-3 py-2.5 text-center">% Completion</th>
                   <th className="px-3 py-2.5">Comments</th>
@@ -2774,7 +2792,7 @@ export function ProductionPlanning() {
               <tbody className="divide-y divide-border">
                 {viewCompletedRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-muted">
+                    <td colSpan={9} className="py-12 text-center text-muted">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Eye className="h-7 w-7 text-muted/50" />
                         <p className="text-sm font-semibold text-foreground">
@@ -2812,6 +2830,30 @@ export function ProductionPlanning() {
                         {row.shift}
                       </td>
 
+                      {/* Completed By / Operator */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {(() => {
+                          const opName = row.completedBy || row.operatorName || ''
+                          const opUser = usersList.find((u) => u.name === opName)
+                          if (!opName) {
+                            return <span className="text-muted text-xs">—</span>
+                          }
+                          return (
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-foreground text-xs">{opName}</span>
+                              <div className="flex items-center gap-1.5 text-[10px] text-muted">
+                                {opUser?.employeeCode && (
+                                  <span className="font-mono bg-surface-muted px-1 rounded border border-border/60">
+                                    {opUser.employeeCode}
+                                  </span>
+                                )}
+                                <span>{opUser?.role || 'Operator'}</span>
+                              </div>
+                            </div>
+                          )
+                        })()}
+                      </td>
+
                       {/* Status */}
                       <td className="px-3 py-2 text-center whitespace-nowrap">
                         <span className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -2840,10 +2882,7 @@ export function ProductionPlanning() {
 
                       {/* Completed At */}
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-muted font-mono">
-                        <div>{row.completedAt ? new Date(row.completedAt).toLocaleString() : 'Recent'}</div>
-                        {row.completedBy && (
-                          <div className="text-[10px] text-accent font-sans font-medium">By: {row.completedBy}</div>
-                        )}
+                        {row.completedAt ? new Date(row.completedAt).toLocaleString() : 'Recent'}
                       </td>
                     </tr>
                   ))
@@ -2861,11 +2900,11 @@ export function ProductionPlanning() {
                 <CheckSquare className="h-4 w-4 text-accent" />
                 <span className="text-xs font-bold text-foreground">Work Update: Queued & In-Progress Serials</span>
                 <span className="rounded-full bg-accent/15 text-accent text-[10px] font-bold px-2 py-0.5">
-                  {workUpdateRecords.length} Serials
+                  {workUpdateRecords.length} Serials ({queuedRecords.length} Queued, {workUpdateRecords.length - queuedRecords.length} In-Progress)
                 </span>
               </div>
               <span className="text-[10px] text-muted font-medium">
-                Select records to update % completion, status, and handover notes
+                Queued serials support bulk selection. In-Progress serials must be updated individually.
               </span>
             </div>
 
@@ -2875,14 +2914,24 @@ export function ProductionPlanning() {
                   <th className="w-10 px-3 py-2.5 text-center">
                     <input
                       type="checkbox"
-                      checked={isAllSelected}
+                      checked={isAllQueuedSelected}
                       onChange={handleToggleSelectAll}
-                      aria-label="Select all serials"
-                      className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent"
+                      disabled={queuedRecords.length === 0 || hasSelectedInProgress}
+                      title={
+                        hasSelectedInProgress
+                          ? 'Multi-selection disabled while an In-Progress serial is selected'
+                          : queuedRecords.length === 0
+                          ? 'No queued records to select'
+                          : 'Select all queued serials'
+                      }
+                      aria-label="Select all queued serials"
+                      className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent disabled:opacity-40"
                     />
                   </th>
                   <th className="px-3 py-2.5">Serails Number</th>
                   <th className="px-3 py-2.5">ProcessName</th>
+                  <th className="px-3 py-2.5">Shift</th>
+                  <th className="px-3 py-2.5">Operator</th>
                   <th className="px-3 py-2.5 text-center">Status</th>
                   <th className="px-3 py-2.5 text-center">% Completion</th>
                   <th className="px-3 py-2.5">Comments</th>
@@ -2891,7 +2940,7 @@ export function ProductionPlanning() {
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-muted">
+                    <td colSpan={8} className="py-10 text-center text-muted">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="h-5 w-5 animate-spin text-accent" />
                         <span className="text-xs">Loading shift records...</span>
@@ -2900,7 +2949,7 @@ export function ProductionPlanning() {
                   </tr>
                 ) : workUpdateRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted">
+                    <td colSpan={8} className="py-12 text-center text-muted">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Layers className="h-7 w-7 text-muted/50" />
                         <p className="text-sm font-semibold text-foreground">
@@ -2915,16 +2964,35 @@ export function ProductionPlanning() {
                 ) : (
                   workUpdateRecords.map((row) => {
                     const isSelected = selectedSerialIds.has(row.id)
+                    const isProg = isInProgressRecord(row)
+                    const isSelectionBlocked =
+                      !isSelected &&
+                      (hasSelectedInProgress || (selectedSerialIds.size > 0 && isProg))
+
+                    const disabledReason = isSelectionBlocked
+                      ? hasSelectedInProgress
+                        ? 'In-Progress serial selected. Unselect it to select other serials.'
+                        : 'In-Progress serials cannot be multi-selected with Queued serials.'
+                      : undefined
 
                     return (
                       <tr
                         key={row.id}
-                        onClick={() => handleToggleRow(row.id)}
-                        className={`cursor-pointer transition ${
-                          isSelected
-                            ? 'bg-accent/10 hover:bg-accent/15'
-                            : 'hover:bg-surface-muted/40'
+                        onClick={() => {
+                          if (isSelectionBlocked) {
+                            setError(disabledReason || 'Record cannot be selected.')
+                            return
+                          }
+                          handleToggleRow(row.id)
+                        }}
+                        className={`transition ${
+                          isSelectionBlocked
+                            ? 'opacity-60 cursor-not-allowed bg-surface-muted/20'
+                            : isSelected
+                            ? 'cursor-pointer bg-accent/10 hover:bg-accent/15'
+                            : 'cursor-pointer hover:bg-surface-muted/40'
                         }`}
+                        title={disabledReason}
                       >
                         {/* Checkbox */}
                         <td
@@ -2934,9 +3002,11 @@ export function ProductionPlanning() {
                           <input
                             type="checkbox"
                             checked={isSelected}
+                            disabled={isSelectionBlocked}
                             onChange={() => handleToggleRow(row.id)}
                             aria-label={`Select ${row.serialNumber}`}
-                            className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent"
+                            title={disabledReason}
+                            className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent disabled:opacity-40 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -2950,6 +3020,30 @@ export function ProductionPlanning() {
                         {/* ProcessName */}
                         <td className="px-3 py-2 whitespace-nowrap text-xs font-semibold text-foreground">
                           {row.processName || row.processStepName}
+                        </td>
+
+                        {/* Shift */}
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-foreground">
+                          {row.shift || '—'}
+                        </td>
+
+                        {/* Operator */}
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {(() => {
+                            const opName = row.operatorName || ''
+                            const opUser = usersList.find((u) => u.name === opName)
+                            if (!opName) {
+                              return <span className="text-muted text-xs">—</span>
+                            }
+                            return (
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-foreground text-xs">{opName}</span>
+                                {opUser?.role && (
+                                  <span className="text-[10px] text-muted">{opUser.role}</span>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </td>
 
                         {/* Status */}
