@@ -89,24 +89,8 @@ export const superAdminNav: SuperAdminNavNode[] = [
     label: 'Order',
     icon: ClipboardList,
     children: [
-      {
-        id: 'my-orders',
-        label: 'My Orders',
-        icon: ClipboardList,
-        children: [
-          { id: 'my-orders-active', label: 'Active Orders', path: '/order/my-orders/active' },
-          { id: 'my-orders-all', label: 'All Orders', path: '/order/my-orders/all' },
-        ],
-      },
-      {
-        id: 'all-orders',
-        label: 'Orders',
-        icon: ClipboardList,
-        children: [
-          { id: 'orders-active', label: 'Active Orders', path: '/order/orders/active' },
-          { id: 'orders-all', label: 'All Orders', path: '/order/orders/all' },
-        ],
-      },
+      { id: 'orders-active', label: 'Active Orders', path: '/order/orders/active' },
+      { id: 'orders-all', label: 'All Orders', path: '/order/orders/all' },
     ],
   },
   {
@@ -114,17 +98,10 @@ export const superAdminNav: SuperAdminNavNode[] = [
     label: 'Production',
     icon: Factory,
     children: [
-      {
-        id: 'my-production',
-        label: 'My Production',
-        icon: Factory,
-        children: [
-          { id: 'prod-active', label: 'Active', path: '/production/my-production/active' },
-          { id: 'prod-closed', label: 'Closed', path: '/production/my-production/closed' },
-          { id: 'prod-new', label: 'New', path: '/production/my-production/new' },
-          { id: 'prod-all', label: 'All', path: '/production/my-production/all' },
-        ],
-      },
+      { id: 'prod-active', label: 'Active', path: '/production/my-production/active' },
+      { id: 'prod-closed', label: 'Closed', path: '/production/my-production/closed' },
+      { id: 'prod-new', label: 'New', path: '/production/my-production/new' },
+      { id: 'prod-all', label: 'All', path: '/production/my-production/all' },
     ],
   },
   {
