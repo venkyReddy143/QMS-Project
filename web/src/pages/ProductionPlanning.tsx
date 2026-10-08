@@ -396,6 +396,12 @@ export function ProductionPlanning() {
 
   // Active Tab: VIEW, WORK_UPDATE, TOOL_CHANGE, BREAKDOWN (Defaults to WORK_UPDATE)
   const [activeTab, setActiveTab] = useState<ShiftTab>('WORK_UPDATE')
+  // after Get Details the filter form folds into a one-line summary so the table gets the room
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
+  const hasSerialRecords = serialRecords.length > 0
+  useEffect(() => {
+    if (hasSerialRecords) setFiltersCollapsed(true)
+  }, [hasSerialRecords])
 
   // Right Column Update Fields (Work Update tab)
   const [formCompletedPercent, setFormCompletedPercent] = useState<number>(0)
@@ -1165,6 +1171,7 @@ export function ProductionPlanning() {
       setError(err instanceof Error ? err.message : 'Failed to fetch details from database.')
     } finally {
       setTimeout(() => setFetchingDetails(false), 200)
+      setFiltersCollapsed(true)
     }
   }
 
@@ -1902,6 +1909,7 @@ export function ProductionPlanning() {
                 </button>
               </div>
 
+              {!filtersCollapsed ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {/* 1. Date (Default current date) */}
                 <div>
@@ -2113,6 +2121,34 @@ export function ProductionPlanning() {
                   </button>
                 </div>
               </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {[
+                    selectedDate,
+                    selectedShift,
+                    selectedPlanNo,
+                    selectedBatchNo,
+                    selectedProcessStep,
+                    selectedUser,
+                  ]
+                    .filter(Boolean)
+                    .map((value) => (
+                      <span
+                        key={String(value)}
+                        className="rounded-full border border-border bg-surface-muted px-2.5 py-1 font-semibold text-foreground"
+                      >
+                        {value}
+                      </span>
+                    ))}
+                  <button
+                    type="button"
+                    onClick={() => setFiltersCollapsed(false)}
+                    className="ml-auto rounded-lg border border-border px-3 py-1.5 font-bold hover:border-accent"
+                  >
+                    Change filters
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
