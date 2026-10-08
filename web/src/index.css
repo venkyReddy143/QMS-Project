@@ -143,3 +143,16 @@ main > * {
 main > .mx-auto {
   width: 100%;
 }
+
+/* Window too short for fill mode (set by Layout): one scroller only. The page
+   scrolls and tables show all rows instead of scrolling inside a box. */
+main.single-scroll .table-scroll,
+main.single-scroll .table-scroll.table-scroll-fill {
+  flex: none;
+  max-height: none;
+}
+
+main.single-scroll .table-scroll > table:not([data-sticky-first]) > thead > tr > th,
+main.single-scroll .table-scroll > table[data-sticky-first] > thead > tr > th:not(:first-child) {
+  position: static;
+}
