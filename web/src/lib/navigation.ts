@@ -112,6 +112,8 @@ export const superAdminNav: SuperAdminNavNode[] = [
       { id: 'masters-products', label: 'Products', path: '/masters/products' },
       { id: 'masters-machine-types', label: 'Machine type', path: '/masters/machine-types' },
       { id: 'masters-machines', label: 'Machines', path: '/masters/machines' },
+      { id: 'masters-process-steps', label: 'Process Steps', path: '/masters/process-steps' },
+      { id: 'masters-customers', label: 'Customers', path: '/masters/customers' },
       { id: 'masters-calendars', label: 'Calenders', path: '/masters/calendars' },
       { id: 'masters-workers', label: 'Workers', path: '/masters/workers' },
     ],
