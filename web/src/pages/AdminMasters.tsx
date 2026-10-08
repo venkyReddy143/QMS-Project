@@ -121,7 +121,7 @@ export function AdminMasters({ section }: { section?: Tab } = {}) {
   const action = TAB_ACTIONS[tab]
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <section className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-surface-raised p-5">
         <div>
           <h2 className="text-2xl font-bold text-foreground">
@@ -1955,9 +1955,9 @@ function MasterTable({
   empty: string
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
+    <section className="flex min-h-[16rem] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface-raised">
+      <div className="table-scroll table-scroll-fill">
+        <table data-sticky-first className="min-w-full text-left text-sm">
           <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
             <tr>
               <th className="px-4 py-3">Actions</th>

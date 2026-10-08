@@ -475,7 +475,7 @@ export function PlanningModule() {
   }, [plans])
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
       {/* Page Header */}
       <section className="flex flex-col gap-4 rounded-2xl border border-border bg-surface-raised p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -666,9 +666,9 @@ export function PlanningModule() {
       </section>
 
       {/* Plans Table */}
-      <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+      <section className="flex min-h-[16rem] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-sm">
+        <div className="table-scroll table-scroll-fill">
+          <table data-sticky-first className="min-w-full text-left text-sm">
             <thead className="border-b border-border bg-surface-muted/60 text-xs font-bold uppercase tracking-wider text-muted">
               <tr>
                 <th className="px-4 py-3.5">Actions</th>

@@ -155,7 +155,7 @@ export function SuperAdminProduction() {
   const menuBatch = visible.find((batch) => batch.id === menuBatchId)
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <section className="rounded-2xl border border-border bg-surface-raised p-5">
         <h2 className="text-2xl font-bold text-foreground">{viewTitle(view)}</h2>
         <p className="mt-1 text-base text-muted">
@@ -163,12 +163,12 @@ export function SuperAdminProduction() {
         </p>
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface-raised">
+      <section className="flex min-h-[16rem] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface-raised">
         {error ? (
           <p className="px-4 py-4 text-sm font-medium text-danger">{error}</p>
         ) : null}
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-base">
+        <div className="table-scroll table-scroll-fill">
+          <table data-sticky-first className="min-w-full text-left text-base">
             <thead className="bg-surface-muted text-sm font-bold uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-4 py-3">Actions</th>

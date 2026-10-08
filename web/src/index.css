@@ -45,3 +45,101 @@ select,
 textarea {
   font: inherit;
 }
+
+/* ---- Scrollers -------------------------------------------------------- */
+
+/* thin, unobtrusive scrollbars everywhere (tables, dialogs, lists) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #9db0bc transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #9db0bc;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #6f8795;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Table wrappers: contain sideways scroll, and fade the edge that still has
+   hidden columns so users can tell the table continues. */
+.overflow-x-auto,
+.table-scroll {
+  overscroll-behavior-x: contain;
+  background:
+    linear-gradient(to right, var(--color-surface-raised) 30%, transparent) left center / 36px 100% no-repeat local,
+    linear-gradient(to left, var(--color-surface-raised) 30%, transparent) right center / 36px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.16), transparent) left center / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.16), transparent) right center / 10px 100% no-repeat scroll;
+}
+
+/* Opt-in: keep the first column (Actions / identifier) pinned while the rest
+   of the table scrolls sideways. Add data-sticky-first to the <table>. */
+table[data-sticky-first] > thead > tr > th:first-child,
+table[data-sticky-first] > tbody > tr > td:first-child:not([colspan]) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface-raised);
+  box-shadow: 1px 0 0 var(--color-border);
+}
+
+table[data-sticky-first] > thead > tr > th:first-child {
+  z-index: 2;
+  background: var(--color-surface-muted);
+}
+
+table[data-sticky-first] > tbody > tr:hover > td:first-child:not([colspan]) {
+  background: var(--color-surface-muted);
+}
+
+/* Tables scroll inside their own box (both ways) with a pinned header, so the
+   page itself doesn't have to scroll to read a long table. */
+.table-scroll {
+  overflow: auto;
+  max-height: max(22rem, calc(100vh - 17rem));
+}
+
+.table-scroll > table > thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--color-surface-muted);
+}
+
+/* the pinned first header cell must sit above both pinned axes */
+.table-scroll > table[data-sticky-first] > thead > tr > th:first-child {
+  z-index: 4;
+}
+
+/* Fill mode: the table box takes whatever height is left on the screen, so the
+   page itself stays put and only the table scrolls. The page root is a flex
+   column and the section around the table is flex-1 (see list pages). */
+.table-scroll.table-scroll-fill {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+}
+
+/* page roots inside <main> keep their natural height; only fill pages stretch */
+main > * {
+  flex-shrink: 0;
+}
+
+main > .mx-auto {
+  width: 100%;
+}

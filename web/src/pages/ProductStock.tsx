@@ -41,7 +41,7 @@ export function ProductStock({
         : 'Receive stock into inventory.'
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <section className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-surface-raised p-5">
         <div>
           <h2 className="text-2xl font-bold text-foreground">{title}</h2>
@@ -77,11 +77,11 @@ function InventoryPanel() {
   }, [])
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-surface-raised">
+    <section className="flex min-h-[16rem] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface-raised">
       {error ? (
         <p className="px-4 py-4 text-sm font-medium text-danger">{error}</p>
       ) : null}
-      <div className="overflow-x-auto">
+      <div className="table-scroll table-scroll-fill">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-surface-muted text-xs font-bold uppercase tracking-wide text-muted">
             <tr>
