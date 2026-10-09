@@ -112,6 +112,7 @@ export function getStoredSerialUpdates(): Record<string, StoredSerialUpdate> {
           status: 'IN_PROGRESS',
           comments: 'Machining in progress (50% completed)',
           batchNo: 'B02',
+          shift: 'Shift B',
           updatedAt: new Date().toISOString(),
         }
       }
@@ -122,6 +123,7 @@ export function getStoredSerialUpdates(): Record<string, StoredSerialUpdate> {
           status: 'IN_PROGRESS',
           comments: 'Machining in progress (50% completed)',
           batchNo: 'B02',
+          shift: 'Shift B',
           updatedAt: new Date().toISOString(),
         }
       }
@@ -412,6 +414,10 @@ export function ProductionPlanning() {
     return saved && saved !== 'All Users' ? saved : ''
   })
   const [formUserError, setFormUserError] = useState<string | null>(null)
+  const [formShift, setFormShift] = useState<string>(() => {
+    const s = localStorage.getItem('qms_selected_shift') || getCurrentTimeShift()
+    return s.split(' (')[0].trim() || 'Shift B'
+  })
 
   // Tool Change Records & Form States (No static mock records)
   const [toolRecords, setToolRecords] = useState<ToolChangeRecord[]>(() => {
@@ -1478,6 +1484,11 @@ export function ProductionPlanning() {
     [selectedRecords],
   )
 
+  const currentMinPercent = useMemo(() => {
+    if (selectedRecords.length === 0) return 0
+    return Math.max(...selectedRecords.map((r) => Number(r.completedPercent) || 0))
+  }, [selectedRecords])
+
   const isAllQueuedSelected =
     queuedRecords.length > 0 &&
     selectedSerialIds.size === queuedRecords.length &&
@@ -1700,6 +1711,27 @@ export function ProductionPlanning() {
       formStatus === 'COMPLETED'
         ? 100
         : Math.min(100, Math.max(0, Number(formCompletedPercent) || 0))
+
+    // Guard: Progress cannot decrease below current progress
+    if (currentMinPercent > 0 && updatedPercent < currentMinPercent) {
+      setError(
+        `% of Completion cannot decrease. Current progress is already at ${currentMinPercent}%. Value must be above ${currentMinPercent}%.`,
+      )
+      return
+    }
+
+    // Guard: If updating an in-progress record, progress must advance above current progress (unless putting on hold or rejected)
+    if (
+      currentMinPercent > 0 &&
+      updatedPercent === currentMinPercent &&
+      formStatus !== 'ON_HOLD' &&
+      formStatus !== 'QC_REJECTED'
+    ) {
+      setError(
+        `Progress is already at ${currentMinPercent}%. Please enter a value above ${currentMinPercent}% (e.g. up to 100%) to record new progress.`,
+      )
+      return
+    }
 
     // Auto-align status with completion percentage
     let updatedStatus = formStatus
@@ -2213,42 +2245,71 @@ export function ProductionPlanning() {
                           >
                             % of Completion
                           </label>
-                          <span className="font-mono text-[11px] font-extrabold text-accent">
-                            {formCompletedPercent}%
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {currentMinPercent > 0 && (
+                              <span className="text-[10px] font-bold text-accent">
+                                Current: {currentMinPercent}% (Must be &gt; {currentMinPercent}%)
+                              </span>
+                            )}
+                            <span className="font-mono text-[11px] font-extrabold text-accent">
+                              {formCompletedPercent}%
+                            </span>
+                          </div>
                         </div>
                         <div className="relative">
                           <input
                             id="updatePercentInput"
                             type="number"
-                            min={0}
+                            min={currentMinPercent > 0 ? currentMinPercent + 1 : 0}
                             max={100}
                             step={1}
-                            placeholder="Enter % completion (0 - 100)"
+                            placeholder={
+                              currentMinPercent > 0
+                                ? `Enter value above ${currentMinPercent}% (${currentMinPercent + 1} - 100)`
+                                : 'Enter % completion (0 - 100)'
+                            }
                             value={formCompletedPercent}
                             onChange={(e) => {
                               const raw = e.target.value
                               if (raw === '') {
-                                setFormCompletedPercent(0)
-                                setFormStatus('PLANNED')
+                                setFormCompletedPercent(currentMinPercent)
                                 return
                               }
-                              const val = Math.min(100, Math.max(0, Number(raw) || 0))
+                              const num = Number(raw)
+                              if (isNaN(num)) return
+                              const val = Math.min(100, Math.max(0, num))
                               setFormCompletedPercent(val)
                               if (val === 100) {
                                 setFormStatus('COMPLETED')
-                              } else if (val > 0) {
+                              } else if (val > 0 && (formStatus === 'PLANNED' || formStatus === 'QUEUED')) {
                                 setFormStatus('IN_PROGRESS')
-                              } else {
-                                setFormStatus('PLANNED')
                               }
                             }}
-                            className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 pr-7 text-xs font-bold text-foreground outline-none transition focus:border-accent"
+                            onBlur={() => {
+                              if (currentMinPercent > 0 && formCompletedPercent < currentMinPercent) {
+                                setFormCompletedPercent(currentMinPercent)
+                              }
+                            }}
+                            className={`h-8 w-full rounded-lg border bg-surface-muted px-2.5 pr-7 text-xs font-bold text-foreground outline-none transition focus:border-accent ${
+                              currentMinPercent > 0 && formCompletedPercent < currentMinPercent
+                                ? 'border-danger focus:border-danger'
+                                : 'border-border'
+                            }`}
                           />
                           <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
                             %
                           </span>
                         </div>
+                        {currentMinPercent > 0 && formCompletedPercent < currentMinPercent && (
+                          <p className="mt-1 text-[11px] font-semibold text-danger">
+                            Cannot decrease below current progress of {currentMinPercent}%. Value must be above {currentMinPercent}%.
+                          </p>
+                        )}
+                        {currentMinPercent > 0 && formCompletedPercent === currentMinPercent && (
+                          <p className="mt-1 text-[10px] text-muted">
+                            Current progress is {currentMinPercent}%. Next update must be above {currentMinPercent}% (e.g. up to 100%).
+                          </p>
+                        )}
                       </div>
 
                       {/* status dropdown */}
@@ -2263,15 +2324,7 @@ export function ProductionPlanning() {
                           id="updateStatusSelect"
                           value={formStatus}
                           onChange={(e) => {
-                            const val = e.target.value
-                            setFormStatus(val)
-                            if (val === 'COMPLETED') {
-                              setFormCompletedPercent(100)
-                            } else if (val === 'PLANNED') {
-                              setFormCompletedPercent(0)
-                            } else if (val === 'IN_PROGRESS' && formCompletedPercent === 0) {
-                              setFormCompletedPercent(50)
-                            }
+                            setFormStatus(e.target.value)
                           }}
                           className="h-8 w-full rounded-lg border border-border bg-surface-muted px-2.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
                         >
@@ -2316,7 +2369,8 @@ export function ProductionPlanning() {
                     <button
                       type="button"
                       onClick={handleApplyUpdate}
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent py-2 text-xs font-bold text-white shadow-sm hover:bg-accent/90 transition"
+                      disabled={currentMinPercent > 0 && formCompletedPercent < currentMinPercent}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent py-2 text-xs font-bold text-white shadow-sm hover:bg-accent/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Check className="h-3.5 w-3.5" />
                       <span>
